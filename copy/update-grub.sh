@@ -1,0 +1,225 @@
+#!/bin/sh
+#
+# NAME
+#
+#   update-grub.sh
+#
+# DESCRIPTION
+#
+#   Writes a new grub.cfg file to match current device save data.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+###
+### CONFIG
+###
+
+# clean environment
+unset IFS
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# constants / functions
+NAME=`basename "$0"`
+USAGE="
+NAME
+
+    $NAME
+
+DESCRIPTION
+
+    Writes a new grub.cfg file to match current device save data to standard
+    output. Use redirection to write to a file.
+
+AUTHOR
+
+    Written by Michael Spencer.
+
+COPYRIGHT
+
+    Copyright (c) 2013-2015 Trynd, LLC.
+"
+printUsage()
+{
+    echo "$USAGE"
+    test x"$1" = x || exit $1
+}
+
+fail()
+{
+    test x"$1" = x \
+        && echo "An error occured - exiting..." >&2 \
+        || echo "$1 - exiting..." >&2
+
+    exit 1
+}
+
+# load platform environment
+test x"$RUN_ENV_PLATFORM_NAME" != x \
+    && . "/etc/$RUN_ENV_PLATFORM_NAME/platform-env" \
+    && loadRunEnvConf \
+    && updateBootOptions \
+    || fail "Unable to load platform environment"
+
+# ensure platform display name
+testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME \
+    || fail "Unable to determine platform display name"
+
+# ensure boot device is mounted
+testVariableDefinition MOUNT_DEVICE \
+    && testIsMounted "$MOUNT_DEVICE" \
+    || fail "Boot device does not appear to be mounted"
+
+# ensure other required variables are defined
+testVariableDefinition BOOT_DEVICE \
+    || BOOT_DEVICE="LABEL=$RUN_ENV_PLATFORM_NAME"
+testVariableDefinition DEVICE_DIRECTORY_IMAGES \
+    || DEVICE_DIRECTORY_IMAGES=/boot/images
+testVariableDefinition DEVICE_DIRECTORY_SAVES \
+    || DEVICE_DIRECTORY_SAVES=/boot/save
+testVariableDefinition PLATFORM_IMAGE_KERNEL \
+    || PLATFORM_IMAGE_KERNEL=vmlinuz
+testVariableDefinition PLATFORM_IMAGE_INITRD \
+    || PLATFORM_IMAGE_KERNEL=initrd.img
+
+###
+### END CONFIG
+###
+
+
+### GENERATOR
+
+generate()
+{
+    # required
+    local heading
+    local directory
+    # optional
+    local options
+    local fallback_directory
+    # local
+    local kernel
+    local initrd
+    local versioned_kernel
+    local kernel_version
+
+    heading="$1"
+    directory="$2"
+    options="$3"
+    fallback_directory="$4"
+
+    test x"$heading" = x && return 1
+
+    if test x"$directory" = x -o ! -d "${MOUNT_DEVICE%/}/${directory#/}"; then
+        test x"$fallback_directory" != x \
+            && return `generate "$heading" "$fallback_directory" "$options"` \
+            || return 1
+    fi
+
+    directory="/${directory#/}"
+    directory="${directory%/}"
+
+    kernel="${directory}/$PLATFORM_IMAGE_KERNEL"
+    versioned_kernel=
+    kernel_version=
+    if test ! -f "${MOUNT_DEVICE%/}$kernel"; then
+        versioned_kernel=`getNewestExistingVersionedFilePath "${MOUNT_DEVICE%/}$kernel"` \
+            && kernel_version="${versioned_kernel#${MOUNT_DEVICE%/}$kernel}" \
+            && kernel="$kernel$kernel_version" \
+            || { generate "$heading" "$fallback_directory" "$options" ; return $? ; }
+    fi
+
+    initrd="${directory}/$PLATFORM_IMAGE_INITRD$kernel_version"
+    test -f "${MOUNT_DEVICE%/}$initrd" \
+        || { generate "$heading" "$fallback_directory" "$options" ; return $? ; }
+
+    test x"$options" = x || options=" $options"
+
+    echo "
+
+menuentry \"$heading\" {
+    linux $kernel root=$BOOT_DEVICE$options
+    initrd $initrd
+}"
+}
+
+
+### HEADER
+
+# begin the save contents
+result="# AUTO-GENERATED
+set timeout=10
+set default=0"
+
+
+### SAVE IMAGES
+
+# get saves path
+path_dir_saves=`getDeviceSavesDirectoryPath` \
+    && test x"$path_dir_saves" != x \
+    || fail "Unable to determine device save storage directory"
+
+if test -d "$path_dir_saves"; then
+    # iterate over saves, adding to output along the way
+    saves=`getAbsoluteDirectoryList "$path_dir_saves"` \
+        || fail "Unable to load save storage directory content"
+    while IFS= read -r i; do
+        if test -d "$i"; then
+            save=`basename "$i"` || fail
+
+            menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (Load Save: $save)" "${DEVICE_DIRECTORY_SAVES%/}/$save" "$RUN_ENV_PLATFORM_NAME-save=$save" "$DEVICE_DIRECTORY_IMAGES"` \
+                && result="$result$menuentry"
+        fi
+    done <<EOF
+$saves
+EOF
+fi
+
+
+### CORE IMAGES
+
+### NEW (No Save Image)
+
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save"` \
+    && result="$result$menuentry"
+
+### NEW WITH SWAP
+
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New With Swap)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-swap=LABEL=SWAP"` \
+    && result="$result$menuentry"
+
+### NEW TO RAM
+
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New To RAM)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-to-ram"` \
+    && result="$result$menuentry"
+
+### NEW TO RAM WITH UNMOUNT
+
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New To RAM - Remove Media)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-unmount"` \
+    && result="$result$menuentry"
+
+### NEW WITH TEST MODE
+
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New - TEST MODE - Log All - No Boot)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-test-mode"` \
+    && result="$result$menuentry"
+
+echo "$result"

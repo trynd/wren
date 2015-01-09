@@ -1,0 +1,1427 @@
+#!/bin/sh
+#
+# NAME
+#
+#   platform-env
+#
+# DESCRIPTION
+#
+#   Utility platform environment variables and methods.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+# Define the platform name.
+if test x"$RUN_ENV_PLATFORM_NAME" = x; then
+    RUN_ENV_PLATFORM_NAME=wren
+fi
+
+# Define the platform's display name.
+if test x"$RUN_ENV_PLATFORM_DISPLAY_NAME" = x; then
+    RUN_ENV_PLATFORM_DISPLAY_NAME=Wren
+fi
+
+# Define the platform version.
+RUN_ENV_PLATFORM_VERSION=0.1.0
+
+# Define mount points.
+MOUNT_ENV=/mnt/$RUN_ENV_PLATFORM_NAME
+MOUNT_IMAGES=$MOUNT_ENV/xx-images
+MOUNT_DEVICE=$MOUNT_ENV/00-device
+MOUNT_ROOT=$MOUNT_ENV/01-root
+MOUNT_PLATFORM=$MOUNT_ENV/02-platform
+MOUNT_PLATFORM_UNION=$MOUNT_ENV/03-platform-union
+MOUNT_SAVE=$MOUNT_ENV/04-save
+MOUNT_TMP=$MOUNT_ENV/xx-tmp
+MOUNT_SAVE_TMP=$MOUNT_ENV/xx-save-tmp
+MOUNT_SNAPSHOT_TMP=$MOUNT_ENV/xx-snapshot-tmp
+
+# Define LVM volume names and device paths.
+LVM_NAME_VG=vg_$RUN_ENV_PLATFORM_NAME
+LVM_NAME_LV_SAVE=lv_save
+LVM_NAME_LV_SNAPSHOT=lv_snapshot
+LVM_NAME_MAPPER_LV_SAVE=$LVM_NAME_VG-$LVM_NAME_LV_SAVE
+LVM_NAME_MAPPER_LV_SAVE_REAL=$LVM_NAME_VG-$LVM_NAME_LV_SAVE-real
+LVM_NAME_MAPPER_LV_SNAPSHOT=$LVM_NAME_VG-$LVM_NAME_LV_SNAPSHOT
+LVM_NAME_MAPPER_LV_SNAPSHOT_COW=$LVM_NAME_VG-$LVM_NAME_LV_SNAPSHOT-cow
+LVM_PATH_VG=/dev/$LVM_NAME_VG
+LVM_PATH_LV_SAVE=$LVM_PATH_VG/$LVM_NAME_LV_SAVE
+LVM_PATH_LV_SNAPSHOT=$LVM_PATH_VG/$LVM_NAME_LV_SNAPSHOT
+LVM_PATH_MAPPER_LV_SAVE=/dev/mapper/$LVM_NAME_MAPPER_LV_SAVE
+LVM_PATH_MAPPER_LV_SAVE_REAL=/dev/mapper/$LVM_NAME_MAPPER_LV_SAVE_REAL
+LVM_PATH_MAPPER_LV_SNAPSHOT=/dev/mapper/$LVM_NAME_MAPPER_LV_SNAPSHOT
+LVM_PATH_MAPPER_LV_SNAPSHOT_COW=/dev/mapper/$LVM_NAME_MAPPER_LV_SNAPSHOT_COW
+
+# Define runtime environment paths.
+RUN_ENV_DIRECTORY=/var/run/$RUN_ENV_PLATFORM_NAME
+RUN_ENV_DIRECTORY_CONF=$RUN_ENV_DIRECTORY/conf
+RUN_ENV_DIRECTORY_PROC=$RUN_ENV_DIRECTORY/proc
+RUN_ENV_DIRECTORY_TMP=/tmp/$RUN_ENV_PLATFORM_NAME
+
+# Determine and define command paths.
+CMD_LVM=`which lvm` || CMD_LVM=lvm
+CMD_STAT=`which stat` || CMD_STAT=stat
+CMD_SORT=`which sort` || CMD_SORT=sort
+CMD_SWAPON=`which swapon` || CMD_SWAPON=swapon
+CMD_SWAPOFF=`which swapoff` || CMD_SWAPOFF=swapoff
+
+# Determine if environment variable is defined with a non-empty value.
+testVariableDefinition()
+{
+    # required
+    local name
+
+    name=$1
+
+    test x"$name" = x && { echo "Variable name is required" >&2 ; return 1 ; }
+    eval "test x\"\$$name\" = x" && { echo "$name is not defined" >&2 ; return 1 ; }
+
+    return 0
+}
+
+# Determine if current user is root user (uid=0).
+testRootUser()
+{
+    # local
+    local uid
+
+    uid=`id -u`
+
+    test x"$uid" = x0
+    return $?
+}
+
+# Source (load and run) runtime environment config files.
+loadRunEnvConf()
+{
+    testVariableDefinition RUN_ENV_DIRECTORY_CONF || return $?
+
+    # local
+    local i
+    local path
+
+    for i in \
+        "device.conf" \
+        "boot.conf" \
+        "platform.conf"
+    do
+        path=$RUN_ENV_DIRECTORY_CONF/$i
+        test -f "$path" && . "$path" || return $?
+    done
+
+    return 0
+}
+
+# Read boot options (/proc/cmdline) and set requested boot option variables.
+updateBootOptions()
+{
+    # local
+    local prefix
+    local test_mode
+    local skip_root
+    local skip_platform
+    local skip_save
+    local root_to_ram
+    local platform_to_ram
+    local save_to_ram
+    local to_ram
+    local unmount
+    local save
+    local i
+    local param
+    local boot_device
+
+    prefix=$RUN_ENV_PLATFORM_NAME-
+
+    test_mode=test-mode
+    skip_root=skip-root
+    skip_platform=skip-platform
+    skip_save=skip-save
+    root_to_ram=root-to-ram
+    platform_to_ram=platform-to-ram
+    save_to_ram=save-to-ram
+    to_ram=to-ram
+    unmount=unmount
+    save=save
+    swap=swap
+    swap_wait=swap-wait
+
+    # empty string values
+    BOOT_DEVICE=''
+
+    # read kernel boot options
+    for i in $(cat /proc/cmdline); do
+
+        # set the boot device info if it was defined
+        boot_device=${i#root=}
+        if test x"$i" != x"$boot_device"; then
+            BOOT_DEVICE=$boot_device
+            continue
+        fi
+
+        # Skip options not prefixed with platform name
+        param=${i#${prefix}}
+        test x"$i" = x"$param" && continue
+
+        case $param in
+
+            # test mode
+            $test_mode=0        )   BOOT_TEST_MODE=0 ;;
+            $test_mode | \
+            $test_mode=1        )   BOOT_TEST_MODE=1 ;;
+
+            # skip root
+            $skip_root=0        )   BOOT_SKIP_ROOT=0 ;;
+            $skip_root | \
+            $skip_root=1        )   BOOT_SKIP_ROOT=1 ;;
+
+            # skip platform
+            $skip_platform=0    )   BOOT_SKIP_PLATFORM=0 ;;
+            $skip_platform | \
+            $skip_platform=1    )   BOOT_SKIP_PLATFORM=1 ;;
+
+            # skip save
+            $skip_save=0        )   BOOT_SKIP_SAVE=0 ;;
+            $skip_save | \
+            $skip_save=1        )   BOOT_SKIP_SAVE=1 ;;
+
+            # root to ram
+            $root_to_ram=0      )   BOOT_ROOT_TO_RAM=0
+                                    BOOT_UNMOUNT=0
+                                    ;;
+            $root_to_ram | \
+            $root_to_ram=1      )   BOOT_ROOT_TO_RAM=1 ;;
+
+            # platform to ram
+            $platform_to_ram=0  )   BOOT_PLATFORM_TO_RAM=0
+                                    BOOT_UNMOUNT=0
+                                    ;;
+            $platform_to_ram | \
+            $platform_to_ram=1  )   BOOT_PLATFORM_TO_RAM=1 ;;
+
+            # save to ram
+            $save_to_ram=0      )   BOOT_SAVE_TO_RAM=0
+                                    BOOT_UNMOUNT=0
+                                    ;;
+            $save_to_ram | \
+            $save_to_ram=1      )   BOOT_SAVE_TO_RAM=1 ;;
+
+            # to ram
+            $to_ram=0           )   BOOT_ROOT_TO_RAM=0
+                                    BOOT_PLATFORM_TO_RAM=0
+                                    BOOT_SAVE_TO_RAM=0
+                                    BOOT_UNMOUNT=0
+                                    ;;
+            $to_ram | \
+            $to_ram=1           )   BOOT_ROOT_TO_RAM=1
+                                    BOOT_PLATFORM_TO_RAM=1
+                                    BOOT_SAVE_TO_RAM=1
+                                    ;;
+
+            # unmount
+            $unmount=0          )   BOOT_UNMOUNT=0 ;;
+            $unmount | \
+            $unmount=1          )   BOOT_UNMOUNT=1
+                                    BOOT_ROOT_TO_RAM=1
+                                    BOOT_PLATFORM_TO_RAM=1
+                                    BOOT_SAVE_TO_RAM=1
+                                    ;;
+
+            # save
+            $save=*             )   BOOT_SAVE=${param#${save}=}
+                                    ;;
+
+            # swap
+            $swap=*             )   BOOT_SWAP=${param#${swap}=}
+                                    ;;
+
+            # swap wait
+            $swap_wait=*        )   BOOT_SWAP_WAIT=${param#${swap_wait}=}
+                                    ;;
+        esac
+    done
+
+    return 0
+}
+
+# Remove any slashes from start of string and echo back result string.
+trimLeadingSlashes()
+{
+    local x
+    local y
+    x=$1
+    y=${x#/}
+    while test x"$x" != x"$y"; do
+        x=$y
+        y=${x#/}
+    done
+    echo "$x"
+}
+
+# Remove any slashes from end of string and echo back result string.
+trimTrailingSlashes()
+{
+    local x
+    local y
+    x=$1
+    y=${x%/}
+    while test x"$x" != x"$y"; do
+        x=$y
+        y=${x%/}
+    done
+    echo "$x"
+}
+
+# Echo a sorted list of directory contents.
+# If no directory path is given, defaults to the present working directory.
+getDirectoryList()
+{
+    # optional
+    local directory
+    # local
+    local result
+    local basename
+    local code
+
+    directory=${1:-.}
+
+    test -d "$directory" \
+        || { code=$? ; echo "\"$directory\" is not a valid directory" >&2 ; return $code ; }
+
+    result=`for i in "${directory%/}"/* "${directory%/}"/.*; do echo "$i"; done` || return $?
+    result=`echo "$result" | $CMD_SORT` || return $?
+
+    echo "$result" | while IFS= read -r i; do
+        if test x"$i" != x; then
+            basename=`basename "$i"`
+            case "$basename" in
+                '*' ) ;;
+                '.*' ) ;;
+                '.' ) ;;
+                '..' ) ;;
+                * ) echo "$basename" ;;
+            esac
+        fi
+    done
+
+    return 0
+}
+
+# Echo a sorted list of directory contents as absolute paths (meaning prefixed
+# with the absolute directory path).
+# If no directory path is given, defaults to the present working directory.
+getAbsoluteDirectoryList()
+{
+    # optional
+    local directory
+    # local
+    local result
+
+    directory=`readlink -m ${1:-.}` || return $?
+    result=`getDirectoryList "$directory"` || return $?
+    directory=${directory%/}
+    echo "$result" | while IFS= read -r i; do
+        echo "$directory/$i"
+    done
+
+    return 0
+}
+
+# Sets up a loop device for the provided image file.
+# If no loop device path is provided, defaults to the first unused loop device.
+loopImage()
+{
+    # required
+    local image
+    # optional
+    local loop
+
+    image=$1
+    loop=$2
+
+    test x"$image" = x && { echo "Image file path required" >&2 ; return 1 ; }
+    test -f "$image" || { echo "Image file does not exist" >&2 ; return 1 ; }
+    test x"$loop" = x && { loop=`losetup -f` || return $? ; }
+    sleep 1
+    losetup "$loop" "$image" || return $?
+
+    return 0
+}
+
+# Detach the file or device associated with the specified loop device path.
+# If the loop device is busy, will try to free the device up to 5 times before
+# giving up.
+unloopLoop()
+{
+    # required
+    local loop
+    # local
+    local deleted
+    local counter
+
+    loop=$1
+
+    test x"$loop" = x && { echo "Loop device path required" >&2 ; return 1 ; }
+
+    losetup "$loop" 1>/dev/null 2>&1
+    test x"$?" = x0 || { echo "Could not find loop device \"$loop\"" ; return 1 ; }
+
+    # attempt to free loop device up to 5 times before giving up
+    deleted=0
+    counter=0
+    while test "$deleted" -eq 0 -a "$counter" -lt 5; do
+        losetup -d "$loop" 2>/dev/null \
+            && deleted=1 \
+            || sleep 1
+        counter=$(($counter+1))
+    done
+    test "$deleted" -eq 0 \
+        && { echo "Could not free loop device \"$loop\"" ; return 1 ;}
+
+    return 0
+}
+
+# Detach the provided image file from its associated loop device (if currently
+# looped)
+unloopImage()
+{
+    # required
+    local image
+    # local
+    local loop
+
+    image=$1
+
+    test x"$image" = x && { echo "Image file path required" >&2 ; return 1 ; }
+    loop=`getImageLoop "$image"` || return $?
+    unloopLoop "$loop" || return $?
+
+    return 0
+}
+
+# Return the loop device path for the provided image file (if currently looped)
+getImageLoop()
+{
+    # required
+    local image
+    # local
+    local result
+
+    image=$1
+
+    test x"$image" = x && { echo "Image file path required" >&2 ; return 1 ; }
+    test -f "$image" || { echo "Image file does not exist" >&2 ; return 1 ; }
+    result=`losetup -j "$image"` || return $?
+    test x"$result" = x && return 1
+    result=`echo "$result" | sed 's/^[[:space:]]*//'` || return $?
+    result=`echo "$result" | sed 's/:.*//'` || return $?
+    echo "$result"
+
+    return 0
+}
+
+# Determine whether the provided image file is currently looped (meaning is
+# associated with a loop device)
+testImageLooped()
+{
+    # required
+    local image
+
+    image=$1
+
+    getImageLoop "$image" 1>/dev/null 2>&1
+    return $?
+}
+
+# Determine whether a given directory is currently acting as a mount point.
+# A full/absolute directory path is required.
+testIsMounted()
+{
+    # required
+    local full_path_to_directory
+    # local
+    local result
+
+    full_path_to_directory=$1
+
+    result=`cat /proc/mounts` || return $?
+    result=`echo "$result" | sed -e 's/^[[:space:]]*//'` || return $?
+    result=`echo "$result" | sed -e 's/[[:space:]]\+/ /g'` || return $?
+    result=`echo "$result" | cut -d' ' -f2` || return $?
+    result=`echo "$result" | grep "^${full_path_to_directory%/}/\?\$"` || return $?
+
+    return 0
+}
+
+# Create a tmpfs (temporary RAM filesystem) mount at the given mount point path.
+# An optional name for the mount can be provided to make unmounting easier.
+# The tmpfs mount is created with no restriction on block or inode count, so
+# external manual/automated RAM observance and maintence is recommended.
+mountTmpfs()
+{
+    # required
+    local mount
+    # optional
+    local name
+
+    mount=$1
+    name=$2
+
+    test x"$mount" = x && { echo "Mount path required" >&2 ; return 1 ; }
+    test x"$name" = x && name=tmpfs
+    mount -t tmpfs -o noatime,nr_blocks=0,nr_inodes=0 "$name" "$mount" || return $?
+
+    return 0
+}
+
+# Loop and mount an image file of the given filesystem type for read-only (ro)
+# or read-write (rw) access at the specified mount point path. An optional
+# loop device path may be provided, otherwise it defaults to the first available
+# loop device.
+mountImage()
+{
+    # required
+    local fs_type
+    local ro_rw
+    local image
+    local mount
+    # optional
+    local loop
+
+    fs_type=$1
+    ro_rw=$2
+    image=$3
+    mount=$4
+    loop=$5
+
+    test x"$fs_type" = x && { echo "Filesystem type required" >&2 ; return 1 ; }
+    test x"$ro_rw" = x && { echo "Mount mode (ro/rw) required" >&2 ; return 1 ; }
+    test x"$image" = x && { echo "Image path required" >&2 ; return 1 ; }
+    test x"$mount" = x && { echo "Mount path required" >&2 ; return 1 ; }
+    test x"$loop" = x && { loop=$(losetup -f) || return $? ; }
+    loopImage "$image" "$loop" || return $?
+    mount -t "$fs_type" -o "$ro_rw",noatime,loop "$loop" "$mount" || return $?
+
+    return 0
+}
+
+# Perform a union mount of a lower and upper directory path for read-only (ro)
+# or read-write (rw) access at the specified mount point path. An optional name
+# for the mount can be provided to make unmounting easier.
+mountUnion()
+{
+    # required
+    local ro_rw
+    local lower
+    local upper
+    local mount
+    # optional
+    local name
+
+    ro_rw=$1
+    lower=$2
+    upper=$3
+    mount=$4
+    name=$5
+
+    test x"$ro_rw" = x && { echo "Mount mode (ro/rw) required" >&2 ; return 1 ; }
+    test x"$lower" = x && { echo "Lower directory path required" >&2 ; return 1 ; }
+    test x"$upper" = x && { echo "Upper directory path required" >&2 ; return 1 ; }
+    test x"$mount" = x && { echo "Mount path required" >&2 ; return 1 ; }
+    test x"$name" = x && name=overlayfs
+    mount -t overlayfs -o "${ro_rw}",noatime,lowerdir="$lower",upperdir="$upper" "$name" "$mount" \
+        || return $?
+
+    return 0
+}
+
+# Determine an absolute path to the image storage directory on the predetermined
+# mount device (typically a hard disk used to boot the machine).
+getDeviceImagesDirectoryPath()
+{
+    testVariableDefinition DEVICE_DIRECTORY_IMAGES || return $?
+    testVariableDefinition MOUNT_DEVICE || return $?
+
+    # local
+    local result
+
+    result=$DEVICE_DIRECTORY_IMAGES
+    result=`trimLeadingSlashes "$result"` || return $?
+    result=`trimTrailingSlashes "$result"` || return $?
+    result=$MOUNT_DEVICE/$result
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path to the storage directory used to save device users'
+# content on the predetermined mount device (typically a hard disk used to boot
+# the machine).
+getDeviceSavesDirectoryPath()
+{
+    testVariableDefinition DEVICE_DIRECTORY_SAVES || return $?
+    testVariableDefinition MOUNT_DEVICE || return $?
+
+    # local
+    local result
+
+    result=$DEVICE_DIRECTORY_SAVES
+    result=`trimLeadingSlashes "$result"` || return $?
+    result=`trimTrailingSlashes "$result"` || return $?
+    result=$MOUNT_DEVICE/$result
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path to the device-user-specific save directory, as
+# determined by the save name. If no save name is provided, defaults to the
+# save name provided at boot time. If no save name was provided at boot,
+# subsequently defaults to the platform-defined save name default (which should
+# always be defined).
+getSaveDirectoryPath()
+{
+    # optional
+    local save_name
+    # local
+    local result
+
+    save_name=$1
+
+    if test x"$save_name" != x; then
+        result="`getDeviceSavesDirectoryPath`/$save_name" || return $?
+    elif test x"$BOOT_SAVE" != x ; then
+        result="`getDeviceSavesDirectoryPath`/$BOOT_SAVE" || return $?
+    elif test x"$PLATFORM_DEFAULT_SAVE" != x ; then
+        result="`getDeviceSavesDirectoryPath`/$PLATFORM_DEFAULT_SAVE" || return $?
+    else
+        echo "Neither BOOT_SAVE or PLATFORM_DEFAULT_SAVE are defined" >&2
+        return 1
+    fi
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path to the most appropriate root image file to use
+# for a boot procedure. First checks the appropriate device-user-specific save
+# directory, then (if not found) subsequently checks the device images
+# directory. Uses the default (platform defined) root image name if found, or
+# subsequently checks for version numbered variants (newest version available).
+# An optional save name may be provided if an alternate save path is preferred.
+getExistingRootImagePath()
+{
+    testVariableDefinition PLATFORM_IMAGE_ROOT || return $?
+
+    # optional
+    local save_name
+    # local
+    local result
+
+    save_name=$1
+
+    result="`getSaveDirectoryPath "$save_name"`/$PLATFORM_IMAGE_ROOT" || return $?
+    test -f "$result" \
+        || result=`getNewestExistingVersionedFilePath "$result"` \
+        || result="`getDeviceImagesDirectoryPath`/$PLATFORM_IMAGE_ROOT" \
+        || return $?
+    test -f "$result" \
+        || result=`getNewestExistingVersionedFilePath "$result"` \
+        || return $?
+    test -f "$result" || return $?
+
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path for a platform image file (using the default
+# platform defined file name) in the appropriate device-user-specific save
+# directory. File existence is not checked, so the primary intent of this
+# function is to determine where to write a new device-user-specific platform
+# image file. An optional save name may be provided if an alternate save path
+# is preferred.
+getSavePlatformImagePath()
+{
+    testVariableDefinition PLATFORM_IMAGE_PLATFORM || return $?
+
+    # optional
+    local save_name
+    # local
+    local result
+
+    save_name=$1
+
+    result=`getSaveDirectoryPath "$save_name"`/$PLATFORM_IMAGE_PLATFORM || return $?
+
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path to the most appropriate platform image file to use
+# for a boot procedure. First checks the appropriate device-user-specific save
+# directory, then (if not found) subsequently checks the device images
+# directory. Uses the default (platform defined) platform image name if found,
+# or subsequently checks for version numbered variants (newest version
+# available). An optional save name may be provided if an alternate save path is
+# preferred.
+getExistingPlatformImagePath()
+{
+    testVariableDefinition PLATFORM_IMAGE_PLATFORM || return $?
+
+    # optional
+    local save_name
+    # local
+    local result
+
+    save_name=$1
+
+    result="`getSaveDirectoryPath "$save_name"`/$PLATFORM_IMAGE_PLATFORM" || return $?
+    test -f "$result" \
+        || result=`getNewestExistingVersionedFilePath "$result"` \
+        || result="`getDeviceImagesDirectoryPath`/$PLATFORM_IMAGE_PLATFORM" \
+        || return $?
+    test -f "$result" \
+        || result=`getNewestExistingVersionedFilePath "$result"` \
+        || return $?
+    test -f "$result" || return $?
+
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path for a save image file (using the default
+# platform defined file name) in the appropriate device-user-specific save
+# directory. File existence is not checked, so the primary intent of this
+# function is to determine where to write a new device-user-specific save
+# image file. An optional save name may be provided if an alternate save path is
+# preferred.
+getSaveImagePath()
+{
+    testVariableDefinition PLATFORM_IMAGE_SAVE || return $?
+
+    # optional
+    local save_name
+    # local
+    local result
+
+    save_name=$1
+
+    result="`getSaveDirectoryPath "$save_name"`" || return $?
+    result="$result/$PLATFORM_IMAGE_SAVE"
+
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path to the most appropriate save image file from the
+# appropriate device-user-specific save directory to use for a boot procedure.
+# Uses the default (platform defined) save image name if found, or subsequently
+# checks for version numbered variants (newest version available). An optional
+# save name may be provided if an alternate save path is preferred.
+getExistingSaveImagePath()
+{
+    # optional
+    local save_name
+    # local
+    local result
+
+    save_name=$1
+
+    result="`getSaveImagePath "$save_name"`" || return $?
+    test -f "$result" \
+        || result=`getNewestExistingVersionedFilePath "$result"` \
+        || return $?
+    test -f "$result" || return $?
+
+    echo "$result"
+
+    return 0
+}
+
+# Determine an absolute path for the (in-memory) LVM save image file, which
+# serves as RAM-based storage for active device-user-specific save content.
+getLvmSaveImagePath()
+{
+    testVariableDefinition MOUNT_IMAGES || return $?
+    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE || return $?
+
+    echo "$MOUNT_IMAGES/$PLATFORM_IMAGE_LVM_SAVE"
+
+    return 0
+}
+
+# Determine an absolute path for the (in-memory) LVM snapshot image file, which
+# serves as RAM-based delta storage during save-to-disk procedures.
+getLvmSnapshotImagePath()
+{
+    testVariableDefinition MOUNT_IMAGES || return $?
+    testVariableDefinition PLATFORM_IMAGE_LVM_SNAPSHOT || return $?
+
+    echo "$MOUNT_IMAGES/$PLATFORM_IMAGE_LVM_SNAPSHOT"
+
+    return 0
+}
+
+# Copy the specified file to the specified directory. The directory will be
+# created if it does not exist.
+copyFileTo()
+{
+    # required
+    local file
+    local directory
+    # local
+    local filename
+
+    file=$1
+    directory=$2
+    test x"$file" = x \
+        && { echo "File not defined for copy" >&2 ; return 1 ; }
+    test -f "$file" \
+        || { echo "File \"$file\" not found" >&2 ; return 1 ; }
+    test x"$directory" = x \
+        && { echo "Directory not defined for copy" >&2 ; return 1 ; }
+    filename=`basename "$file"` || return $?
+    mkdir -p "$directory" || return $?
+    cp "$file" "$directory/$filename" || return $?
+
+    return 0
+}
+
+# Copy the specified file to the images mount point directory.
+copyFileToImages()
+{
+    testVariableDefinition MOUNT_IMAGES || return $?
+    copyFileTo "$1" "$MOUNT_IMAGES" || return $?
+
+    return 0
+}
+
+# Determine the size (in bytes) of the specified file.
+getFileSize()
+{
+    test x"$1" = x && { echo "File path required" >&2 ; return 1 ; }
+    test -f "$1" || { echo "\"$1\" is not a file" >&2 ; return 1 ; }
+
+    echo `$CMD_STAT -c%s "$1"` || return $?
+
+    return 0
+}
+
+# Determine disk usage (in bytes) of the specified file or directory.
+getDiskUsage()
+{
+    test x"$1" = x && { echo "File or directory path required" >&2 ; return 1 ; }
+    test -e "$1" || { echo "\"$1\" does not exist" >&2 ; return 1 ; }
+
+    # local
+    local result
+
+    result=`du -B1 -sx "$1"` || return $?
+    result=`echo "$result" | sed -e 's/^[[:space:]]*//'` || return $?
+    result=`echo "$result" | sed -e 's/[[:space:]]\+/ /g'` || return $?
+    result=`echo "$result" | cut -d' ' -f1` || return $?
+
+    echo "$result"
+
+    return 0
+}
+
+# Determine the total block size of the provided LVM physical volume (the device
+# backing a logical volume - i.e. a disk or loop device path).
+getLvmPhysicalExtentBlockCount()
+{
+    # required
+    local physical_volume_path
+    # local
+    local result
+
+    physical_volume_path=$1
+
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    result=`$CMD_LVM pvdisplay "$physical_volume_path"` \
+        && result=`echo "$result" | grep -i '^[[:space:]]*Total[[:space:]]\+PE'` \
+        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
+        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
+        && result=`echo "$result" | cut -d' ' -f1` \
+        || { code=$? ; echo "Could not determine LVM physical extent block count for physical volume \"$physical_volume_path\"" >&2 ; return $code ; }
+    echo "$result"
+
+    return 0
+}
+
+# Determine the number of unallocated (not in use) blocks on the provided LVM
+# physical volume (the device backing a logical volume - i.e. a disk or loop
+# device path).
+getLvmPhysicalExtentFreeBlockCount()
+{
+    # required
+    local physical_volume_path
+    # local
+    local result
+
+    physical_volume_path=$1
+
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    result=`$CMD_LVM pvdisplay "$physical_volume_path"` \
+        && result=`echo "$result" | grep -i '^[[:space:]]*Free[[:space:]]\+PE'` \
+        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
+        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
+        && result=`echo "$result" | cut -d' ' -f1` \
+        || { code=$? ; echo "Could not determine LVM physical extent free block count for physical volume \"$physical_volume_path\"" >&2 ; return $code ; }
+    echo "$result"
+
+    return 0
+}
+
+# Determine the number of allocated (in use) blocks on the provided LVM physical
+# volume (the device backing a logical volume - i.e. a disk or loop device
+# path).
+getLvmPhysicalExtentAllocatedBlockCount()
+{
+    # required
+    local physical_volume_path
+    # local
+    local result
+
+    physical_volume_path=$1
+
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    result=`$CMD_LVM pvdisplay "$physical_volume_path"` \
+        && result=`echo "$result" | grep -i '^[[:space:]]*Allocated[[:space:]]\+PE'` \
+        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
+        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
+        && result=`echo "$result" | cut -d' ' -f1` \
+        || { code=$? ; echo "Could not determine LVM physical extent free block count for physical volume \"$physical_volume_path\"" >&2 ; return $code ; }
+    echo "$result"
+
+    return 0
+}
+
+# Determine the total block size of the provided LVM logical volume (device
+# path).
+getLvmLogicalExtentBlockCount()
+{
+    # required
+    local logical_volume_path
+    # local
+    local result
+
+    logical_volume_path=$1
+
+    test x"$logical_volume_path" = x \
+        && { echo "Logical volume path required" >&2 ; return 1 ; }
+    result=`$CMD_LVM lvdisplay "$logical_volume_path"` \
+        && result=`echo "$result" | grep -i '^[[:space:]]*Current[[:space:]]\+LE'` \
+        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
+        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
+        && result=`echo "$result" | cut -d' ' -f1` \
+        || { code=$? ; echo "Could not determine LVM logical extent block count for logical volume \"$logical_volume_path\"" >&2 ; return $code ; }
+    echo "$result"
+
+    return 0
+}
+
+# Initialize a physical volume for use by LVM on the specified device path.
+createLvmPhysicalVolume()
+{
+    # required
+    local physical_volume_path
+
+    physical_volume_path=$1
+
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    $CMD_LVM pvcreate "$physical_volume_path" 1>/dev/null || return $?
+
+    return 0
+}
+
+# Remove LVM label(s) from the given physical volume device path and remove the
+# physical volume from any associated LVM volume group.
+removeLvmPhysicalVolume()
+{
+    # required
+    local physical_volume_path
+
+    physical_volume_path=$1
+
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    $CMD_LVM pvremove "$physical_volume_path" 1>/dev/null || return $?
+    $CMD_LVM vgreduce --removemissing 1>/dev/null 2>&1
+
+    return 0
+}
+
+# Create an LVM volume group with the provided name to manage the provided
+# physical volume (device path).
+createLvmVolumeGroup()
+{
+    # required
+    local volume_group_name
+    local physical_volume_path
+
+    volume_group_name=$1
+    physical_volume_path=$2
+
+    test x"$volume_group_name" = x \
+        && { echo "Volume group name required" >&2 ; return 1 ; }
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    $CMD_LVM vgcreate "$volume_group_name" "$physical_volume_path" 1>/dev/null || return $?
+
+    return 0
+}
+
+# Extend the provided LVM volume group (by name) by adding the provided
+# physical volume (device path).
+extendLvmVolumeGroup()
+{
+    # required
+    local volume_group_name
+    local physical_volume_path
+
+    volume_group_name=$1
+    physical_volume_path=$2
+
+    test x"$volume_group_name" = x \
+        && { echo "Volume group name required" >&2 ; return 1 ; }
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    $CMD_LVM vgextend "$volume_group_name" "$physical_volume_path" 1>/dev/null \
+        || return $?
+
+    return 0
+}
+
+# Reduce the provided LVM volume group (by name) by removing the provided
+# physical volume (device path).
+reduceLvmVolumeGroup()
+{
+    # required
+    local volume_group_name
+    local physical_volume_path
+
+    volume_group_name=$1
+    physical_volume_path=$2
+
+    test x"$volume_group_name" = x \
+        && { echo "Volume group name required" >&2 ; return 1 ; }
+    test x"$physical_volume_path" = x \
+        && { echo "Physical volume path required" >&2 ; return 1 ; }
+    $CMD_LVM vgreduce "$volume_group_name" "$physical_volume_path" 1>/dev/null \
+        || return $?
+
+    return 0
+}
+
+# Create an LVM logical volume with the provided name on the specified volume
+# group (by name), allocating the specified number of physical extent blocks
+# to the new logical volume.
+createLvmLogicalVolume()
+{
+    # required
+    local logical_volume_name
+    local volume_group_name
+    local physical_extent_block_count
+
+    logical_volume_name=$1
+    volume_group_name=$2
+    physical_extent_block_count=$3
+
+    test x"$logical_volume_name" = x \
+        && { echo "Logical volume name required" >&2 ; return 1 ; }
+    test x"$volume_group_name" = x \
+        && { echo "Volume group name required" >&2 ; return 1 ; }
+    test x"$physical_extent_block_count" = x \
+        && { echo "Physical extent block count required" >&2 ; return 1 ; }
+    $CMD_LVM lvcreate \
+        -l "$physical_extent_block_count" \
+        -n "$logical_volume_name" \
+        "$volume_group_name" \
+        1>/dev/null \
+        || return $?
+
+    return 0
+}
+
+# Create an LVM snapshot volume with the provided name based on the specified
+# logical volume (device path), allocating the specified number of physical
+# extent blocks to the new snapshot volume.
+createLvmSnapshotLogicalVolume()
+{
+    # required
+    local snapshot_volume_name
+    local logical_volume_path
+    local physical_extent_block_count
+
+    snapshot_volume_name=$1
+    logical_volume_path=$2
+    physical_extent_block_count=$3
+
+    test x"$snapshot_volume_name" = x \
+        && { echo "Snapshot volume name required" >&2 ; return 1 ; }
+    test x"$logical_volume_path" = x \
+        && { echo "Logical volume path required" >&2 ; return 1 ; }
+    test x"$physical_extent_block_count" = x \
+        && { echo "Physical extent block count required" >&2 ; return 1 ; }
+    $CMD_LVM lvcreate \
+        -pr -s \
+        -l "$physical_extent_block_count" \
+        -n "$snapshot_volume_name" \
+        "$logical_volume_path" \
+        1>/dev/null \
+        || return $?
+
+    return 0
+}
+
+# Remove an LVM logical volume (by device path) from the system.
+removeLvmLogicalVolume()
+{
+    # required
+    local logical_volume_path
+
+    logical_volume_path=$1
+
+    test x"$logical_volume_path" = x \
+        && { echo "Logical volume path required" >&2 ; return 1 ; }
+    $CMD_LVM lvremove "$logical_volume_path" 1>/dev/null || return $?
+
+    return 0
+}
+
+# Remove an LVM snapshot (logical) volume (by device path) from the system. This
+# is just like removing a standard logical volume, except that the snapshot
+# mapper name and snapshot cow (copy-on-write) mapper name must also be provided
+# so the device mapper can remove the snapshot's associated delta devices.
+removeLvmSnapshotLogicalVolume()
+{
+    # required
+    local snapshot_logical_volume_path
+    local snapshot_mapper_name
+    local snapshot_cow_mapper_name
+
+    snapshot_logical_volume_path=$1
+    snapshot_mapper_name=$2
+    snapshot_cow_mapper_name=$3
+
+    test x"$snapshot_logical_volume_path" = x \
+        && { echo "Snapshot logical volume path required" >&2 ; return 1 ; }
+    test x"$snapshot_mapper_name" = x \
+        && { echo "Snapshot mapper name required" >&2 ; return 1 ; }
+    test x"$snapshot_cow_mapper_name" = x \
+        && { echo "Snapshot copy-on-write mapper name required" >&2 ; return 1 ; }
+    dmsetup remove "$snapshot_mapper_name" || return $?
+    dmsetup remove "$snapshot_cow_mapper_name" || return $?
+    removeLvmLogicalVolume "$snapshot_logical_volume_path" || return $?
+
+    return 0
+}
+
+# Increase the storage size (and RAM usage) (in bytes) for active
+# device-user-specific save content by increasing the size of the in-memory
+# image file backing the associated LVM physical volume and then increasing the
+# hosted logical volume's block count. If no size increase (in bytes) is
+# specified, the platform-defined default size increment value will be used.
+increaseLvmSaveSize()
+{
+    testVariableDefinition LVM_PATH_LV_SAVE || return $?
+
+    # optional
+    local bytes_increase
+    # local
+    local image_lvm_save
+    local loop_lvm_save
+    local free_pe
+    local used_le
+    local new_le
+
+    bytes_increase=$1
+    if test x"$bytes_increase" = x; then
+        # use default value if it is available
+        testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT \
+            && bytes_increase=$PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT \
+            || { echo "Size increase (byte count) required." >&2 ; return 1 ; }
+    fi
+
+    image_lvm_save=`getLvmSaveImagePath` || return $?
+    test -x"$image_lvm_save" != x -a -f "$image_lvm_save" \
+        || { echo "Could not locate LVM save image" >&2; return 1 ; }
+
+    loop_lvm_save=`getImageLoop "$image_lvm_save"` || return $?
+
+    truncate -c -s +"$bytes_increase" "$image_lvm_save" 1>/dev/null || return $?
+    losetup -c "$loop_lvm_save" 1>/dev/null || return $?
+    $CMD_LVM pvresize "$loop_lvm_save" 1>/dev/null || return $?
+
+    free_pe=`getLvmPhysicalExtentFreeBlockCount "$loop_lvm_save"` || return $?
+    used_le=`getLvmLogicalExtentBlockCount "$LVM_PATH_LV_SAVE"` || return $?
+    new_le=$(($used_le+$free_pe)) || return $?
+
+    $CMD_LVM lvextend -l"$new_le" "$LVM_PATH_LV_SAVE" 1>/dev/null || return $?
+
+    resize2fs "$LVM_PATH_LV_SAVE" 1>/dev/null || return $?
+
+    return 0
+}
+
+# Determine the appropriate file path (by process name) to use for a PID
+# (Process ID) file. This file is typically used as a simple locking mechanism
+# to ensure only one instance of a known process is run at a time, and also as
+# a storage location for the process instance's ID.
+getPidFilePath()
+{
+    testVariableDefinition RUN_ENV_DIRECTORY_PROC || return $?
+
+    # required
+    local name
+    # local
+    local path
+
+    name=$1
+    test x"$name" = x && { echo "Process name required" >&2 ; return 1 ; }
+    path=$RUN_ENV_DIRECTORY_PROC/$name.pid
+    echo "$path"
+
+    return 0
+}
+
+# Determine if the PID (Process ID) file for a named process is absent. If the
+# PID file is absent, it is an indicator that the process is probably not
+# running.
+testNoPidFile()
+{
+    testVariableDefinition RUN_ENV_DIRECTORY_PROC || return $?
+
+    # required
+    local name
+    # local
+    local path
+
+    name=$1
+    test x"$name" = x && { echo "Process name required" >&2 ; return 1 ; }
+
+    path=`getPidFilePath "$name"` || return $?
+    test -e "$path" \
+        && { echo "PID file found - Process already running?" >&2 ; return 1 ; }
+
+    return 0
+}
+
+# Create a new PID (Process ID) file for a named process and store the provided
+# PID value in the created file.
+createPidFile()
+{
+    testVariableDefinition RUN_ENV_DIRECTORY_PROC || return $?
+
+    # required
+    local name
+    local pid
+    # local
+    local path
+
+    name=$1
+    pid=$2
+
+    test x"$name" = x && { echo "Process name required" >&2 ; return 1 ; }
+    test x"$pid" = x && { echo "Process ID required" >&2 ; return 1 ; }
+
+    path=`getPidFilePath "$name"` || return $?
+    testNoPidFile "$name" || return $?
+    mkdir -p `dirname "$path"` || return $?
+    echo "$pid" >$path || return $?
+
+    return 0
+}
+
+# Delete the PID (Process ID) file for the named process. This assumes there
+# is only once instance of the process running.
+deletePidFile()
+{
+    # required
+    local name
+    # local
+    local path
+
+    name=$1
+    test x"$name" = x && { echo "Process name required" >&2 ; return 1 ; }
+    path=`getPidFilePath "$name"` || return $?
+    test -e "$path" \
+        && unlink "$path" 1>/dev/null 2>&1 \
+        || return $?
+
+    return 0
+}
+
+# Enables the specified swap-formatted device or image file (by path) for use
+# as additional system swap space. This function is typically used in
+# conjunction with running tmpfs file systems to allow memory swapping to an
+# external device on machines with low RAM.
+enableSwap()
+{
+    # this method is intended as a wrapper for swapon
+    # prefix path string with "LABEL=" or "UUID=" if required
+
+    # required
+    local path
+
+    path=$1
+    test x"$path" = x \
+        && { echo "Device or swap file path required" >&2 ; return 1 ; }
+    case "$path" in
+        LABEL=* ) $CMD_SWAPON -d -L "${path#LABEL=}" ;;
+        UUID=* ) $CMD_SWAPON -d -U "${path#UUID=}" ;;
+        * ) $CMD_SWAPON -d "$path" ;;
+    esac
+
+    return $?
+}
+
+# Sort a provided list of arguments by version name and number (assumes GNU
+# version numbering), oldest to newest.
+sortByVersion()
+{
+    # local
+    local result
+    local i
+
+    result=`for i in "$@"; do echo "$i"; done` \
+        && result=`echo "$result" | $CMD_SORT --version-sort` \
+        || return $?
+
+    echo "$result"
+
+    return 0
+}
+
+# Sort a provided list of arguments by version name and number (assumes GNU
+# version numbering), newest to oldest.
+reverseSortByVersion()
+{
+    # local
+    local result
+    local i
+
+    result=`for i in "$@"; do echo "$i"; done` \
+        && result=`echo "$result" | $CMD_SORT --version-sort --reverse` \
+        || return $?
+
+    echo "$result"
+
+    return 0
+}
+
+# Sort a provided list of arguments by version name and number (assumes GNU
+# version numbering), and return the newest (last) item in the list.
+getNewestVersion()
+{
+    echo "`sortByVersion "$@" | tail -n1`" \
+        && return 0 \
+        || return $?
+}
+
+# Sort a provided list of arguments by version name and number (assumes GNU
+# version numbering), and return the oldest (first) item in the list.
+getOldestVersion()
+{
+    echo "`sortByVersion "$@" | head -n1`" \
+        && return 0 \
+        || return $?
+}
+
+# Given a base path, generates a list of all version numbered instances of that
+# path, sorts them by version number, and returns the newest (last) one found.
+# The path is verified as existing before successful completion.
+getNewestExistingVersionedPath()
+{
+    # required
+    local path
+    # local
+    local i
+    local result
+
+    path=$1
+
+    result=`for i in "${path%/}"-*; do test -e "$i" && echo "$i"; done` \
+        && result=`getNewestVersion "$result"`
+
+    test x"$result" != x -a -e "$result" \
+        && echo "$result" \
+        || return $?
+
+    return 0
+}
+
+# Given a base file path, generates a list of all version numbered instances of
+# that path, sorts them by version number, and returns the newest (last) one
+# found. The path is verified as an existing file before successful completion.
+getNewestExistingVersionedFilePath()
+{
+    # required
+    local file_path
+    # local
+    local i
+    local result
+
+    file_path=$1
+
+    result=`for i in "$file_path"-*; do test -f "$i" && echo "$i"; done` \
+        && result=`getNewestVersion "$result"`
+
+    test x"$result" != x -a -f "$result" \
+        && echo "$result" \
+        || return $?
+
+    return 0
+}
+
+# Given a base directory path, generates a list of all version numbered
+# instances of that path, sorts them by version number, and returns the newest
+# (last) one found. The path is verified as an existing directory before
+# successful completion.
+getNewestExistingVersionedDirectoryPath()
+{
+    # required
+    local directory_path
+    # local
+    local i
+    local result
+
+    directory_path=$1
+
+    result=`for i in "${directory_path%/}"-*; do test -d "$i" && echo "$i"; done` \
+        && result=`getNewestVersion "$result"`
+
+    test x"$result" != x -a -d "$result" \
+        && echo "$result" \
+        || return $?
+
+    return 0
+}

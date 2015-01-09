@@ -1,0 +1,419 @@
+#!/bin/sh
+#
+# NAME
+#
+#   initramfs-script
+#
+# DESCRIPTION
+#
+#   This script is the core of the platform's initramfs initialization sequence.
+#   It handles all initial system mounts, data copying, etc. and prepares the
+#   platform to be handed off to boot the operating system.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+unset IFS
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+### REQUIRED - FOR INITRAMFS - DO NOT EDIT
+prereq=""
+prereqs()
+{
+    echo "$prereq"
+}
+case "$1" in
+    prereqs )
+        prereqs
+        exit 0
+        ;;
+esac
+. /scripts/functions
+### END REQUIRED
+
+# these aliases should match the copy_exec binaries in initramfs-hooks
+alias stat=/usr/bin/stat
+alias sort=/usr/bin/sort
+alias swapon=/sbin/swapon
+alias swapoff=/sbin/swapoff
+alias umount=/bin/umount
+
+panicExit()
+{
+    test x"$BOOT_TEST_MODE" = x1 && set +x
+    test x"$1" = x \
+        && panic "An error occurred - Dropping to initramfs..." \
+        || panic "${1} - Dropping to initramfs..."
+    exit 0
+}
+
+test x"$rootmnt" = x && panicExit "rootmnt not defined"
+
+
+# load conf files
+conf_dir=/boot/conf
+for i in \
+    "${rootmnt}${conf_dir}/device.conf" \
+    "${rootmnt}${conf_dir}/boot.conf" \
+    "${rootmnt}${conf_dir}/platform.conf" \
+    "/scripts/platform-env"
+do
+    if test -f "$i"; then
+        . "$i" || panicExit "An error occurred while loading configuration file \"$i\""
+    else
+        panicExit "Could not load configuration file \"$i\""
+    fi
+done
+
+
+# load boot options from passed in kernel options
+updateBootOptions || panicExit
+
+
+# start logging all commands if test mode is enabled
+test x"$BOOT_TEST_MODE" = x1 && set -x
+
+
+# create our mount environment as tmpfs
+testVariableDefinition MOUNT_ENV || panicExit
+mkdir -p "$MOUNT_ENV" || panicExit
+mountTmpfs "$MOUNT_ENV" || panicExit
+
+
+# create initial (temporary) mount points
+for i in \
+    MOUNT_IMAGES \
+    MOUNT_DEVICE \
+    MOUNT_ROOT \
+    MOUNT_PLATFORM \
+    MOUNT_PLATFORM_UNION \
+    MOUNT_SAVE
+do
+    testVariableDefinition $i || panicExit
+    eval "mkdir -p \"\$$i\"" || panicExit
+done
+
+
+# move device mount to temporary mount point
+testVariableDefinition rootmnt || panicExit
+mount --move "${rootmnt}" "$MOUNT_DEVICE" || panicExit
+
+
+# define boot images
+test x"$BOOT_SKIP_ROOT" = x1 \
+    && image_root="" \
+    || image_root=`getExistingRootImagePath` \
+    || panicExit
+test x"$BOOT_SKIP_PLATFORM" = x1 \
+    && image_platform="" \
+    || image_platform=`getExistingPlatformImagePath` \
+    || panicExit
+test x"$BOOT_SKIP_SAVE" = x1 \
+    && image_save="" \
+    || image_save=`getExistingSaveImagePath` \
+    || echo "Save image not found - Continuing as new user"
+
+
+# enable swap if requested
+if test x"$BOOT_SWAP" != x; then
+    # wait for the swap device path to be loaded
+    swap_wait=$BOOT_SWAP_WAIT
+    test x"$swap_wait" = x && swap_wait=10
+    case "$BOOT_SWAP" in
+        LABEL=* ) wait-for-root "/dev/disk/by-label/${BOOT_SWAP#LABEL=}" "$swap_wait" ;;
+        UUID=* ) wait-for-root "/dev/disk/by-uuid/${BOOT_SWAP#UUID=}" "$swap_wait" ;;
+        * ) wait-for-root "$BOOT_SWAP" 10 ;;
+    esac
+    enableSwap "$BOOT_SWAP"
+fi
+
+
+# mount root image
+root_copied_to_ram=0
+if test x"$image_root" != x; then
+
+    testVariableDefinition PLATFORM_FILESYSTEM_READONLY || panicExit
+
+    # if requested, copy root image to ram
+    if test x"$BOOT_ROOT_TO_RAM" = x1; then
+        testVariableDefinition MOUNT_IMAGES || panicExit
+        echo "Copying root image to RAM..."
+        copyFileToImages "$image_root"
+        sync
+        image_root=$MOUNT_IMAGES/`basename "$image_root"` || panicExit
+        root_copied_to_ram=1
+    fi
+
+    # mount root image
+    mountImage "$PLATFORM_FILESYSTEM_READONLY" ro "$image_root" "$MOUNT_ROOT" || panicExit
+
+fi
+
+
+# mount platform image
+platform_copied_to_ram=0
+if test x"$image_platform" != x; then
+
+    testVariableDefinition PLATFORM_FILESYSTEM_READONLY || panicExit
+
+    # if requested, copy platform image to ram
+    if test x"$BOOT_PLATFORM_TO_RAM" = x1; then
+        testVariableDefinition MOUNT_IMAGES || panicExit
+        echo "Copying platform image to RAM..."
+        copyFileToImages "$image_platform"
+        sync
+        sleep 1
+        image_platform=$MOUNT_IMAGES/`basename "$image_platform"` || panicExit
+        platform_copied_to_ram=1
+    fi
+
+    # mount platform image
+    mountImage "$PLATFORM_FILESYSTEM_READONLY" ro "$image_platform" "$MOUNT_PLATFORM" || panicExit
+
+fi
+
+
+# mount union of root and platform layers
+testVariableDefinition MOUNT_ROOT           || panicExit
+testVariableDefinition MOUNT_PLATFORM       || panicExit
+testVariableDefinition MOUNT_PLATFORM_UNION || panicExit
+mountUnion ro "$MOUNT_ROOT" "$MOUNT_PLATFORM" "$MOUNT_PLATFORM_UNION" || panicExit
+
+
+# if there's a save file and we're not loading save contents into ram,
+# just mount the save image
+save_copied_to_ram=0
+if test x"$image_save" != x \
+    -a -f "$image_save" \
+    -a x"$BOOT_SAVE_TO_RAM" != x1
+then
+
+        # remount the boot device read-write so the save image can be mounted read-write
+        testVariableDefinition MOUNT_DEVICE || panicExit
+        mount -o remount,rw "$MOUNT_DEVICE" || panicExit
+
+        # mount save file
+        testVariableDefinition MOUNT_SAVE || panicExit
+        testVariableDefinition PLATFORM_FILESYSTEM_READWRITE || panicExit
+        mountImage "$PLATFORM_FILESYSTEM_READWRITE" rw "$image_save" "$MOUNT_SAVE" || panicExit
+
+# otherwise, create an lvm store for the save data
+# and load the save file contents into ram if there is a save file
+else
+
+    testVariableDefinition MOUNT_TMP                                || panicExit
+    testVariableDefinition MOUNT_IMAGES                             || panicExit
+    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE             || panicExit
+    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT   || panicExit
+    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE || panicExit
+    testVariableDefinition LVM_NAME_VG                              || panicExit
+    testVariableDefinition LVM_NAME_LV_SAVE                         || panicExit
+    testVariableDefinition LVM_PATH_LV_SAVE                         || panicExit
+    testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_JOURNALED  || panicExit
+
+
+    # determine save data lvm storage size
+    image_lvm_save_size=$PLATFORM_IMAGE_LVM_SAVE_SIZE
+    if test -x"$image_save" != x -a -f "$image_save"; then
+
+
+        # get device save file size
+        device_image_save_size=`getFileSize "$image_save"` \
+            || panicExit
+
+
+        # increase size by resize tolerance to allow for expansion
+        device_image_save_size=$(($device_image_save_size+$PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE)) \
+            || panicExit
+
+
+        # increment storage size until it can hold what's on the device
+        while test "$image_lvm_save_size" -lt "$device_image_save_size"; do
+            image_lvm_save_size=$(($image_lvm_save_size+$PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT)) \
+                || panicExit
+        done
+
+
+    fi
+
+
+    # create temporary tmpfs union as a working chroot environment
+    mkdir -p "$MOUNT_TMP" || panicExit
+    mountTmpfs "$MOUNT_TMP" || panicExit
+    mountUnion rw "$MOUNT_PLATFORM_UNION" "$MOUNT_TMP" "$MOUNT_TMP" || panicExit
+    for i in /proc /dev /sys "$MOUNT_IMAGES"; do
+        mkdir -p "$MOUNT_TMP$i" || panicExit
+        mount --bind "$i" "$MOUNT_TMP$i" || panicExit
+    done
+
+
+    # create, format, and mount the lvm save store
+    image_lvm_save=`getLvmSaveImagePath` || panicExit
+    chroot "$MOUNT_TMP" dd if=/dev/zero of="$image_lvm_save" \
+        bs=1 seek="$image_lvm_save_size" count=0 1>/dev/null \
+        || panicExit
+    loop_lvm_save=`losetup -f` || panicExit
+    losetup "$loop_lvm_save" "$image_lvm_save" 1>/dev/null || panicExit
+    createLvmPhysicalVolume "$loop_lvm_save" || panicExit
+    createLvmVolumeGroup "$LVM_NAME_VG" "$loop_lvm_save" || panicExit
+    block_count_lvm_save=`getLvmPhysicalExtentBlockCount "$loop_lvm_save"` || panicExit
+    createLvmLogicalVolume "$LVM_NAME_LV_SAVE" "$LVM_NAME_VG" "$block_count_lvm_save" || panicExit
+    chroot "$MOUNT_TMP" mke2fs -t $PLATFORM_FILESYSTEM_READWRITE_JOURNALED "$LVM_PATH_LV_SAVE" 1>/dev/null || panicExit
+    mount -o rw "$LVM_PATH_LV_SAVE" "$MOUNT_SAVE" || panicExit
+
+
+    # if there's a save image we need to copy its content to ram (lvm)
+    if test x"$image_save" != x \
+        -a -f "$image_save"
+    then
+
+        testVariableDefinition MOUNT_TMP                        || panicExit
+        testVariableDefinition MOUNT_SAVE                       || panicExit
+        testVariableDefinition MOUNT_SAVE_TMP                   || panicExit
+        testVariableDefinition PLATFORM_FILESYSTEM_READWRITE    || panicExit
+
+
+        # mount save file (read-only)
+        mkdir -p "$MOUNT_SAVE_TMP"
+        loop_save=`losetup -f` || panicExit
+        mountImage "$PLATFORM_FILESYSTEM_READWRITE" ro "$image_save" "$MOUNT_SAVE_TMP" "$loop_save" || panicExit
+
+
+        # add mounted save bindings to the working chroot environment
+        for i in "$MOUNT_SAVE" "$MOUNT_SAVE_TMP"; do
+            mkdir -p "$MOUNT_TMP$i" || panicExit
+            mount --bind "$i" "$MOUNT_TMP$i" || panicExit
+        done
+
+
+        # copy save contents from the save file to the lvm save store
+        echo "Copying save content to RAM..."
+        chroot "$MOUNT_TMP" rsync -axHAXS "$MOUNT_SAVE_TMP/" "$MOUNT_SAVE" || panicExit
+        sync
+        sleep 1
+        save_copied_to_ram=1
+
+
+        # unbind mounted save bindings from the working chroot environment
+        for i in "$MOUNT_SAVE" "$MOUNT_SAVE_TMP"; do
+            umount "$MOUNT_TMP$i" || panicExit
+        done
+
+
+        # unmount save file and remove mounted directory
+        umount "$MOUNT_SAVE_TMP" || panicExit
+        losetup "$loop_save" 1>/dev/null 2>&1 \
+            && { unloopLoop "$loop_save" || panicExit ; }
+        rmdir "$MOUNT_SAVE_TMP"
+    fi
+
+
+    # unmount and remove temporary tmpfs/union chroot environment
+    for i in /proc /dev /sys "$MOUNT_IMAGES"; do
+        umount "$MOUNT_TMP$i" || panicExit
+    done
+    umount "$MOUNT_TMP" || panicExit  # remove union mount
+    umount "$MOUNT_TMP" || panicExit  # remove tmpfs mount
+    rmdir "$MOUNT_TMP"
+fi
+
+
+# mount a union of all prior levels to create a working root
+testVariableDefinition MOUNT_PLATFORM_UNION || panicExit
+testVariableDefinition MOUNT_SAVE           || panicExit
+testVariableDefinition rootmnt              || panicExit
+mountUnion rw "$MOUNT_PLATFORM_UNION" "$MOUNT_SAVE" "$rootmnt" || panicExit
+
+
+# move temporary mount points into the working root
+testVariableDefinition MOUNT_ENV    || panicExit
+testVariableDefinition rootmnt      || panicExit
+mkdir -p "$rootmnt$MOUNT_ENV" || panicExit
+mount --move "$MOUNT_ENV" "$rootmnt$MOUNT_ENV" || panicExit
+
+
+# copy boot files into the runtime environment configurations directory
+testVariableDefinition MOUNT_DEVICE             || panicExit
+testVariableDefinition RUN_ENV_DIRECTORY_CONF   || panicExit
+testVariableDefinition conf_dir                 || panicExit
+for i in \
+    "device.conf" \
+    "boot.conf" \
+    "platform.conf"
+do
+    copyFileTo "${rootmnt}${MOUNT_DEVICE}${conf_dir}/$i" "${rootmnt}${RUN_ENV_DIRECTORY_CONF}"
+done
+
+
+# if an unmount has been requested, make sure it's safe then unmount the device
+# and prompt the user to remove it
+unmounted=0
+if test x"$BOOT_UNMOUNT" = x1; then
+
+    safe_to_unmount=1
+    test x"$image_root" = x -o x"$root_copied_to_ram" = x1 \
+        || safe_to_unmount=0
+    test x"$image_platform" = x -o x"$platform_copied_to_ram" = x1 \
+        || safe_to_unmount=0
+    test x"$image_save" = x -o x"$save_copied_to_ram" = x1 \
+        || safe_to_unmount=0
+
+    if test x"$safe_to_unmount" = x1; then
+
+        testVariableDefinition MOUNT_DEVICE || panicExit
+
+        sync
+        sleep 1
+        umount "$rootmnt$MOUNT_DEVICE" || panicExit
+
+        sleep 2
+        echo
+        echo
+        echo '-----------------------------'
+        echo 'Please remove the boot media,'
+        echo 'then press enter to continue.'
+        echo '-----------------------------'
+        echo
+        echo
+
+        read platform_wait
+
+        unmounted=1
+    fi
+
+fi
+
+
+# remount the device read-write if it hasn't been unmounted
+if test x"$unmounted" != x1; then
+    testVariableDefinition MOUNT_DEVICE || panicExit
+    testVariableDefinition rootmnt      || panicExit
+    mount -o remount,rw "$rootmnt$MOUNT_DEVICE" || panicExit
+fi
+
+
+# Stop logging commands if test mode is enabled
+test x"$BOOT_TEST_MODE" = x1 && set +x
+
+
+# drop to initramfs if test mode
+test x"$BOOT_TEST_MODE" = x1 && panicExit "Test Mode"

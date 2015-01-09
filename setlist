@@ -1,0 +1,72 @@
+#!/bin/sh
+#
+# NAME
+#
+#   setlist
+#
+# DESCRIPTION
+#
+#   A setlist for the platform build process, describing files to be copied and
+#   packages to be installed and uninstalled.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+# Columns denote To / From (destination and source, multi-space separated).
+# Use a hyphen (-) as the "from" value to delete the "to" file / directory.
+# Common platform run environment variables are allowed.
+# If a path or filename contains spaces, make sure to backslash (\) the spaces.
+SETLIST_COPY="
+    /etc/${RUN_ENV_PLATFORM_NAME}                                   -
+    /etc/${RUN_ENV_PLATFORM_NAME}/COPYRIGHT                         COPYRIGHT
+    /etc/${RUN_ENV_PLATFORM_NAME}/LICENSE                           LICENSE
+    /etc/${RUN_ENV_PLATFORM_NAME}/boot.conf.example                 conf/boot.conf
+    /etc/${RUN_ENV_PLATFORM_NAME}/device.conf.example               conf/device.conf
+    /etc/${RUN_ENV_PLATFORM_NAME}/grub.cfg.example                  conf/grub.cfg
+    /etc/${RUN_ENV_PLATFORM_NAME}/increase-save-size.sh             copy/increase-save-size.sh
+    /etc/${RUN_ENV_PLATFORM_NAME}/platform-env                      platform-env
+    /etc/${RUN_ENV_PLATFORM_NAME}/platform.conf.example             conf/platform.conf
+    /etc/${RUN_ENV_PLATFORM_NAME}/save.sh                           copy/save.sh
+    /etc/${RUN_ENV_PLATFORM_NAME}/tools                             -
+    /etc/${RUN_ENV_PLATFORM_NAME}/tools/enable-root.sh              tools/enable-root.sh
+    /etc/${RUN_ENV_PLATFORM_NAME}/tools/disable-root.sh             tools/disable-root.sh
+    /etc/${RUN_ENV_PLATFORM_NAME}/tools/rename-user.sh              tools/rename-user.sh
+    /etc/${RUN_ENV_PLATFORM_NAME}/update-grub.sh                    copy/update-grub.sh
+    /etc/apt/preferences.d/no-bootloader                            copy/no-bootloader
+    /etc/apt/preferences.d/no-misc                                  copy/no-misc
+    /etc/initramfs-tools/modules                                    copy/modules
+    /etc/initramfs-tools/hooks/_platform                            copy/initramfs-hooks
+    /etc/initramfs-tools/scripts/init-bottom/_platform              copy/initramfs-script
+    /etc/initramfs-tools/scripts/platform-env                       platform-env
+    /etc/sysctl.d/99-swappiness.conf                                copy/99-swappiness.conf
+    /etc/udev/rules.d/99-dmapper-hide.rules                         copy/99-dmapper-hide.rules
+    /usr/share/initramfs-tools/hooks/_platform                      -
+    /usr/src/${RUN_ENV_PLATFORM_NAME}-${RUN_ENV_PLATFORM_VERSION}   .
+"
+
+# A single string of space-separated package names to be passed to
+# "apt-get purge" for uninstallation.
+SETLIST_UNINSTALL="grub grub-common grub-pc grub2 grub2-common lilo elilo apt-xapian-index oneconf ubuntuone-installer"
+
+# A single string of space-separated package names used to filter files in the
+# "install" directory to be passed to "dpkg -i" (in order) for installation.
+SETLIST_INSTALL="squashfs-tools watershed lvm2"

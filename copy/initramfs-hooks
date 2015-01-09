@@ -1,0 +1,76 @@
+#!/bin/sh
+#
+# NAME
+#
+#   initramfs-hooks
+#
+# DESCRIPTION
+#
+#   Copies binaries to the initramfs image when using update-initramfs.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+# clean environment
+unset IFS
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+
+### REQUIRED - FOR INITRAMFS - DO NOT EDIT
+prereq=""
+prereqs()
+{
+    echo "$prereq"
+}
+case "$1" in
+    prereqs )
+        prereqs
+        exit 0
+        ;;
+esac
+. /usr/share/initramfs-tools/hook-functions
+### END REQUIRED
+
+
+# ensure necessary directories exist
+for i in /usr/sbin /usr/bin /sbin /bin ; do
+    test -d "${DESTDIR}${i}" \
+        || mkdir -p "${DESTDIR}$i"
+done
+
+# replace the 'stat' binary
+rm -f "${DESTDIR}/usr/bin/stat"
+copy_exec /usr/bin/stat /usr/bin/
+
+# replace the 'sort' binary
+rm -f "${DESTDIR}/usr/bin/sort"
+copy_exec /usr/bin/sort /usr/bin/
+
+# replace the 'swapon' and 'swapoff' binaries (swapoff is a symlink to swapon)
+rm -f "${DESTDIR}/sbin/swapon"
+rm -f "${DESTDIR}/sbin/swapoff"
+copy_exec /sbin/swapon /sbin/
+ln -s swapon "${DESTDIR}/sbin/swapoff"
+
+# replace the 'umount' binary (busybox umount has non-standard loop deletion)
+rm -f "${DESTDIR}/bin/umount"
+copy_exec /bin/umount /bin/

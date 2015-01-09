@@ -1,0 +1,59 @@
+#
+# NAME
+#
+#   no-bootloader
+#
+# DESCRIPTION
+#
+#   Apt preferences file used to pin various bootloaders to ensure they aren't
+#   automatically reinstalled after being uninstalled.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+Package: grub
+Pin: version *
+Pin-Priority: -1001
+
+Package: grub-common
+Pin: version *
+Pin-Priority: -1001
+
+Package: grub-pc
+Pin: version *
+Pin-Priority: -1001
+
+Package: grub2
+Pin: version *
+Pin-Priority: -1001
+
+Package: grub2-common
+Pin: version *
+Pin-Priority: -1001
+
+Package: lilo
+Pin: version *
+Pin-Priority: -1001
+
+Package: elilo
+Pin: version *
+Pin-Priority: -1001

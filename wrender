@@ -1,0 +1,1235 @@
+#!/bin/sh
+#
+# NAME
+#
+#   wrender
+#
+# DESCRIPTION
+#
+#   Provides platform build and update functionality.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+###
+### CONFIG
+###
+
+unset IFS
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+
+name=wrender
+usage="
+NAME
+
+    $name
+
+DESCRIPTION
+
+    Provides platform build and update functionality.
+
+SYNOPSIS
+
+    $name [OPTIONS]
+
+EXAMPLES
+
+    STANDARD
+
+        Build from scratch. Create platform, initrd, and kernel images in a
+        directory named \"build\" within the current directory.
+
+        $name -r /path/to/root.sfs
+
+    UPDATE EXISTING PLATFORM
+
+        Create a new platform file set based on an existing platform image. This
+        will remove old platform-specific files before copying in the new
+        platform files. The only files that will be removed are those known to
+        be specific to the current or previous platform versions. Other (custom)
+        files in the existing platform will not be modified.
+
+        $name -r /path/to/root.sfs -p /path/to/platform.sfs
+
+    CUSTOMIZE (EXPERIENCED USERS ONLY)
+
+        Manually iterate through the build steps to allow for customization
+        along the way. This can be useful if you want to add additional files
+        or make modifications to the platform files before building the final
+        image files.
+
+        $name -r /path/to/root.sfs --up-to-copy
+
+        ...make platform changes (chroot) in temporary working directories...
+
+        $name --up-to-build --skip-up-to-copy
+
+        ...make more changes, e.g. reconfigure or install/remove packages...
+
+        $name --after-build
+
+OPTIONS
+
+    --destination,-d    OPTIONAL - Path to the directory where the final build
+                        files should be stored. If not defined, defaults to a
+                        'build' child directory in the current directory.
+
+    --help,-h           OPTIONAL - Print this usage information and exit.
+
+    --platform,-p       OPTIONAL - Path to the existing platform file to use as
+                        a basis for the newly created platform (essentially
+                        updates an existing platform image).
+                        Technically, this is only required for the temporary
+                        directory structure's creation step.
+
+    --platform-mount    OPTIONAL - Path to a platform tree directory. This can
+                        be used in place of --platform to specify an existing
+                        platform tree directory location.
+
+    --root,-r           REQUIRED - Path to the root image to be used in the
+                        chroot environment. Without this image it would be
+                        impossible to simulate a working environment. This
+                        option can be replaced with --root-mount if a root
+                        image mount or directory structure already exists.
+                        Technically, this is only required for the temporary
+                        directory structure's creation step.
+
+    --root-mount        REQUIRED - Path to a root tree directory. This can be
+                        used in place of --root to specify an existing root tree
+                        directory location.
+
+    --source,-s         OPTIONAL - Path to the directory containing the platform
+                        source files. If not defined, defaults to the parent
+                        directory containing this build script.
+
+    --tmp,-t            OPTIONAL - Path to the temporary directory to use for
+                        building the platform files. If this option is not
+                        specified '/tmp/platform' is assumed.
+
+STEP-SPECIFIC OPTIONS (NOTE: ORDER MATTERS)
+
+    These options set the builder's step flags on and off.
+
+    Order is important.
+
+    ----------------------------------------------------------------------------
+    The build steps are (in order):
+
+        create, skel, copy, uninstall, install, build, export, clean
+
+    See STEP DESCRIPTIONS for further step details.
+
+    Example:
+
+        If you want to run all steps up to the build step except for the
+        create step the the --up-to-build option must come BEFORE the
+        --skip-create option, because the \"up-to\" options enable flags while
+        the \"skip\" options disable them. Therefore, it's best to enable the
+        group and then disable the individuals.
+    ----------------------------------------------------------------------------
+
+    --create                OPTIONAL - Unless otherwise specified, only create
+                            the temporary directory structure and mounts
+                            necessary for a functional chroot build environment.
+                            No further actions are performed unless specifically
+                            requested. REQUIRES the --root or --root-mount
+                            option.
+
+    --up-to-create          OPTIONAL - Run create step and stop. This is the
+                            same as --create and is only here for compatability
+                            with the other step-specific options.
+
+    --after-create          OPTIONAL - Run all subsequent steps that come after
+                            the create step. This assumes previous steps have
+                            already been performed.
+
+    --skip-create           OPTIONAL - Skip the create process.
+
+    --skip-up-to-create     OPTIONAL - Skip the create step. This is the same as
+                            --skip-create and is only here for compatability
+                            with the other step-specific options.
+
+    --skel                  OPTIONAL - Unless otherwise specified, assumes
+                            --create step has already been performed and only
+                            replaces the /home/user/ directory with a copy of
+                            /etc/skel, thereby resetting the user state.
+
+    --up-to-skel            OPTIONAL - Run all steps up through --skel. Can be
+                            mixed with the --skip-skel option to run all steps
+                            BEFORE skel.
+
+    --after-skel            OPTIONAL - Run all subsequent steps that come after
+                            the skel step. This assumes previous steps have
+                            already been performed.
+
+    --skip-skel             OPTIONAL - Skip the skel process.
+
+    --skip-up-to-skel       OPTIONAL - Skip steps up to and including skel.
+
+    --copy                  OPTIONAL - Unless otherwise specified, assumes
+                            previous steps have already been performed and only
+                            copies in the source files and makes file
+                            modifications.
+
+    --up-to-copy            OPTIONAL - Run all steps up through --copy. Can be
+                            mixed with the --skip-copy option to run all steps
+                            BEFORE copy.
+
+    --after-copy            OPTIONAL - Run all subsequent steps that come after
+                            the copy step. This assumes previous steps have
+                            already been performed.
+
+    --skip-copy             OPTIONAL - Skip the copy process.
+
+    --skip-up-to-copy       OPTIONAL - Skip steps up to and including copy.
+
+    --uninstall             OPTIONAL - Unless otherwise specified, assumes
+                            previous steps have been completed. Uninstalls
+                            packages defined for uninstallation in the setlist.
+
+    --up-to-uninstall       OPTIONAL - Run all steps up through --uninstall. Can
+                            be mixed with the --skip-uninstall option to run all
+                            steps BEFORE uninstall.
+
+    --after-uninstall       OPTIONAL - Run all subsequent steps that come after
+                            the uninstall step. This assumes previous steps have
+                            already been performed.
+
+    --skip-uninstall        OPTIONAL - Skip the uninstall process.
+
+    --skip-up-to-uninstall  OPTIONAL - Skip steps up to and including uninstall.
+
+    --install               OPTIONAL - Unless otherwise specified, assumes
+                            previous steps have been completed. Only installs
+                            new packages from the installation directory.
+
+    --up-to-install         OPTIONAL - Run all steps up through --install. Can
+                            be mixed with the --skip-install option to run all
+                            steps BEFORE install.
+
+    --after-install         OPTIONAL - Run all subsequent steps that come after
+                            the install step. This assumes previous steps have
+                            already been performed.
+
+    --skip-install          OPTIONAL - Skip the install process.
+
+    --skip-up-to-install    OPTIONAL - Skip steps up to and including install.
+
+    --build                 OPTIONAL - Unless otherise specified, assumes
+                            previous steps have already been performed and only
+                            installs/removes required packages and updates the
+                            initramfs image.
+
+    --up-to-build           OPTIONAL - Run all steps up through --build. Can be
+                            mixed with the --skip-build option to run all steps
+                            BEFORE build.
+
+    --after-build           OPTIONAL - Run all subsequent steps that come after
+                            the build step. This assumes previous steps have
+                            already been performed.
+
+    --skip-build            OPTIONAL - Skip the build process.
+
+    --skip-up-to-build      OPTIONAL - Skip steps up to and including build.
+
+    --export                OPTIONAL - Unless otherwise specified, assumes
+                            previous steps have already been performed and
+                            exports the initramfs and kernel images (initrd.img
+                            and vmlinuz) and compresses the platform files to
+                            platform.sfs in the destination directory.
+
+    --up-to-export          OPTIONAL - Run all steps up through --export. Can be
+                            mixed with the --skip-export option to run all steps
+                            BEFORE export.
+
+    --after-export          OPTIONAL - Run all subsequent steps that come after
+                            the export step. This assumes previous steps have
+                            already been performed.
+
+    --skip-export           OPTIONAL - Skip the export process.
+
+    --skip-up-to-export     OPTIONAL - Skip steps up to and including export.
+
+    --clean                 OPTIONAL - Unless otherwise specified, assume prior
+                            operations have been completed and just cleans up
+                            (unmounts and deletes) the temporary work
+                            directories. This will only touch directories within
+                            the temporary directory tree, in case --root-mount
+                            or --platform-mount were used during the --create
+                            step.
+
+    --up-to-clean           OPTIONAL - Run all steps up through --clean. Can be
+                            mixed with the --skip-clean option to run all steps
+                            BEFORE clean. This is the same as running all steps
+                            and is only here for compatability with the other
+                            step-specific options.
+
+    --after-clean           OPTIONAL - This implicitly skips all steps and is
+                            only here for compatibility with the other
+                            step-specific options.
+
+    --skip-clean            OPTIONAL - Skip the clean process.
+
+    --skip-up-to-clean      OPTIONAL - This explicitly skips all steps and is
+                            only here for compatibility with the other
+                            step-specific options.
+
+STEP DESCRIPTIONS (IN ORDER OF BUILD STEPS)
+
+    The following describes, in order, in basic detail, the purpose of each of
+    the steps performed during a build process. See STEP-SPECIFIC OPTIONS for
+    details on independently disabling or electively running steps.
+
+    CREATE
+
+        * Create a temporary working directory and mount it as a tmpfs.
+
+        * Mount required images (root and possibly platform images).
+
+        * Create a tmpfs mounted \"export\" directory to hold platform
+          modifications for export.
+
+        * Copy platform content (if applicable) for modification and export. If
+          a platform image was used, subsequently unmount the platform image.
+
+        * Union mount the root and export (platform modification) layers.
+
+        * Mount required chroot environment directories on the union.
+
+    SKEL
+
+        These modifications will be a part of the exported platform image.
+
+        * Replace user directory content with home directory skeleton content
+          (this essentially resets the user state to that of a new user).
+
+    COPY
+
+        These modifications will be a part of the exported platform image.
+
+        * Iterate through the setlist (SETLIST_COPY), copying and deleting files
+          and directories to the union mount as requested by the setlist. This
+          should include the platform environment, tools, and utility scripts
+          as well as a copy of the source directory used to perform the build.
+
+        * Add the new platform environment's name to the chroot (union mounted)
+          system's environment variables.
+
+    UNINSTALL
+
+        These modifications will be a part of the exported platform image.
+
+        * Iterate through the setlist (SETLIST_UNINSTALL) and uninstall the
+          requested packages from the chroot (union mounted) system.
+
+    INSTALL
+
+        These modifications will be a part of the exported platform image.
+
+        * Bind mount (temporarily) the \"install\" directory into the union
+          mount to make packages available to the chroot environment.
+
+        * Iterate through the setlist (SETLIST_INSTALL) and install requested
+          packages (in case of multiple instances the newest version present)
+          from the \"install\" directory to the chroot (union mounted) system.
+
+    BUILD
+
+        These modifications will be a part of the exported platform image.
+
+        * Rebuild the initramfs image to use the new platform initialization
+          scripts.
+
+    EXPORT
+
+        * If necessary, backup any existing images in the destination directory
+          by renaming them (with a ~ extension).
+
+        * Compress the \"export\" directory contents into a read-only platform
+          image, excluding unnecessary child directories, and place it in the
+          destination directory.
+
+        * Copy the newest kernel image from the chroot (union mounted) system
+          to the destination directory.
+
+        * Copy the rebuilt initramfs image (see BUILD step) from the chroot
+          system to the destination directory.
+
+    CLEAN
+
+        * Unmount required chroot environment directories from the union mount.
+
+        * Unmount the union, export, and root mounts.
+
+        * Remove any left-over build process directories (if applicable).
+
+        * Unmount the temporary (tmpfs) working directory.
+
+        * Delete temporary working mount point directory.
+"
+
+
+printUsage()
+{
+    echo "$usage"
+    test x"$1" != x && exit $1
+}
+
+
+fail()
+{
+    test x"$1" = x \
+        && echo "An error occured - exiting..." >&2 \
+        || echo "$1 - exiting..." >&2
+
+    exit 1
+}
+
+###
+### END CONFIG
+###
+
+
+pwd=`pwd`
+
+default_path_dir_tmp=/tmp/platform
+name_dir_root=1-root
+name_dir_export=2-export
+name_dir_union=3-union
+name_dir_platform=xx-platform
+
+path_dir_source=""
+path_dir_destination=""
+path_dir_tmp=""
+path_dir_root=""
+path_dir_platform=""
+path_img_root=""
+path_img_platform=""
+
+default_should=1
+should_create=""
+should_skel=""
+should_copy=""
+should_uninstall=""
+should_install=""
+should_build=""
+should_export=""
+should_clean=""
+
+flag_dir_source=0
+flag_dir_destination=0
+flag_dir_tmp=0
+flag_dir_root=0
+flag_dir_platform=0
+flag_img_root=0
+flag_img_platform=0
+
+# load options
+for i in "$@"; do
+    case 1 in
+        $flag_dir_source )
+            path_dir_source=$i
+            flag_dir_source=0
+            ;;
+        $flag_dir_destination )
+            path_dir_destination=$i
+            flag_dir_destination=0
+            ;;
+        $flag_dir_tmp )
+            path_dir_tmp=$i
+            flag_dir_tmp=0
+            ;;
+        $flag_dir_root )
+            path_dir_root=$i
+            flag_dir_root=0
+            ;;
+        $flag_dir_platform )
+            path_dir_platform=$i
+            flag_dir_platform=0
+            ;;
+        $flag_img_root )
+            path_img_root=$i
+            flag_img_root=0
+            ;;
+        $flag_img_platform )
+            path_img_platform=$i
+            flag_img_platform=0
+            ;;
+        * )
+            case $i in
+
+                ### OPTIONS
+
+                --destination|-d )
+                    flag_dir_destination=1
+                    ;;
+                -d* )
+                    path_dir_destination=${i#-d}
+                    ;;
+                --help|-h )
+                    printUsage 0
+                    ;;
+                --platform|-p )
+                    flag_img_platform=1
+                    ;;
+                -p* )
+                    path_img_platform=${i#-p}
+                    ;;
+                --platform-mount )
+                    flag_dir_platform=1
+                    ;;
+                --root|-r )
+                    flag_img_root=1
+                    ;;
+                -r* )
+                    path_img_root=${i#-r}
+                    ;;
+                --root-mount )
+                    flag_dir_root=1
+                    ;;
+                --source|-s )
+                    flag_dir_source=1
+                    ;;
+                -s* )
+                    path_dir_source=${i#-s}
+                    ;;
+                --tmp|-t )
+                    flag_dir_tmp=1
+                    ;;
+                -t* )
+                    path_dir_tmp=${i#-t}
+                    ;;
+
+                ### STEP OPTIONS
+
+                --create|--up-to-create )
+                    should_create=1
+                    default_should=0
+                    ;;
+                --after-create )
+                    should_skel=1
+                    should_copy=1
+                    should_uninstall=1
+                    should_install=1
+                    should_build=1
+                    should_export=1
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --skip-create )
+                    should_create=0
+                    ;;
+                --skel )
+                    should_skel=1
+                    default_should=0
+                    ;;
+                --up-to-skel )
+                    should_create=1
+                    should_skel=1
+                    default_should=0
+                    ;;
+                --after-skel )
+                    should_copy=1
+                    should_uninstall=1
+                    should_install=1
+                    should_build=1
+                    should_export=1
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --skip-skel )
+                    should_skel=0
+                    ;;
+                --skip-up-to-skel )
+                    should_create=0
+                    should_skel=0
+                    ;;
+                --copy )
+                    should_copy=1
+                    default_should=0
+                    ;;
+                --up-to-copy )
+                    should_create=1
+                    should_skel=1
+                    should_copy=1
+                    default_should=0
+                    ;;
+                --after-copy )
+                    should_uninstall=1
+                    should_install=1
+                    should_build=1
+                    should_export=1
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --skip-copy )
+                    should_copy=0
+                    ;;
+                --skip-up-to-copy )
+                    should_create=0
+                    should_skel=0
+                    should_copy=0
+                    ;;
+                --uninstall )
+                    should_uninstall=1
+                    default_should=0
+                    ;;
+                --up-to-uninstall )
+                    should_create=1
+                    should_skel=1
+                    should_copy=1
+                    should_uninstall=1
+                    default_should=0
+                    ;;
+                --after-uninstall )
+                    should_install=1
+                    should_build=1
+                    should_export=1
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --skip-uninstall )
+                    should_uninstall=0
+                    ;;
+                --skip-up-to-uninstall )
+                    should_create=0
+                    should_skel=0
+                    should_copy=0
+                    should_uninstall=0
+                    ;;
+                --install )
+                    should_install=1
+                    default_should=0
+                    ;;
+                --up-to-install )
+                    should_create=1
+                    should_skel=1
+                    should_copy=1
+                    should_uninstall=1
+                    should_install=1
+                    default_should=0
+                    ;;
+                --after-install )
+                    should_build=1
+                    should_export=1
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --skip-install )
+                    should_install=0
+                    ;;
+                --skip-up-to-install )
+                    should_create=0
+                    should_skel=0
+                    should_copy=0
+                    should_uninstall=0
+                    should_install=0
+                    ;;
+                --build )
+                    should_build=1
+                    default_should=0
+                    ;;
+                --up-to-build )
+                    should_create=1
+                    should_skel=1
+                    should_copy=1
+                    should_uninstall=1
+                    should_install=1
+                    should_build=1
+                    default_should=0
+                    ;;
+                --after-build )
+                    should_export=1
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --skip-build )
+                    should_build=0
+                    ;;
+                --skip-up-to-build )
+                    should_create=0
+                    should_skel=0
+                    should_copy=0
+                    should_uninstall=0
+                    should_install=0
+                    should_build=0
+                    ;;
+                --export )
+                    should_export=1
+                    default_should=0
+                    ;;
+                --up-to-export )
+                    should_create=1
+                    should_skel=1
+                    should_copy=1
+                    should_uninstall=1
+                    should_install=1
+                    should_build=1
+                    should_export=1
+                    default_should=0
+                    ;;
+                --after-export )
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --skip-export )
+                    should_export=0
+                    ;;
+                --skip-up-to-export )
+                    should_create=0
+                    should_skel=0
+                    should_copy=0
+                    should_uninstall=0
+                    should_install=0
+                    should_build=0
+                    should_export=0
+                    ;;
+                --clean )
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --up-to-clean )
+                    should_create=1
+                    should_skel=1
+                    should_copy=1
+                    should_uninstall=1
+                    should_install=1
+                    should_build=1
+                    should_export=1
+                    should_clean=1
+                    default_should=0
+                    ;;
+                --after-clean )
+                    default_should=0
+                    ;;
+                --skip-clean )
+                    should_clean=0
+                    ;;
+                --skip-up-to-clean )
+                    should_create=0
+                    should_skel=0
+                    should_copy=0
+                    should_uninstall=0
+                    should_install=0
+                    should_build=0
+                    should_export=0
+                    should_clean=0
+                    ;;
+                * )
+                    fail "Unknown option \"$i\""
+                    ;;
+            esac
+            ;;
+    esac
+done
+
+# set "should" action defaults
+test x"$should_create" = x      && should_create=$default_should
+test x"$should_skel" = x        && should_skel=$default_should
+test x"$should_copy" = x        && should_copy=$default_should
+test x"$should_uninstall" = x   && should_uninstall=$default_should
+test x"$should_install" = x     && should_install=$default_should
+test x"$should_build" = x       && should_build=$default_should
+test x"$should_export" = x      && should_export=$default_should
+test x"$should_clean" = x       && should_clean=$default_should
+
+# assign defaults for other unset options
+test x"$path_dir_source" = x        && path_dir_source=`dirname $0`
+test x"$path_dir_destination" = x   && path_dir_destination=$pwd/build
+test x"$path_dir_tmp" = x           && path_dir_tmp=$default_path_dir_tmp
+
+# check root
+if test x"$should_create" = x1; then
+    if test x"$path_img_root" = x; then
+        test x"$path_dir_root" = x \
+            && fail "Option required: [--root <IMAGE_PATH>|--root-mount <DIR_PATH>]"
+        test -d "$path_dir_root" \
+            || fail "Provided root mount is not a valid directory: \"$path_dir_root\""
+    else
+        test -f "$path_img_root" \
+            || fail "Provided root image is not a valid file: \"$path_img_root\""
+    fi
+fi
+
+# check platform
+if test x"$should_create" = x1; then
+    if test x"$path_img_platform" = x; then
+        if test x"$path_dir_platform" != x; then
+            test -d "$path_dir_platform" \
+                || fail "Provided platform mount is not a valid directory: \"$path_dir_platform\""
+        fi
+    else
+        test -f "$path_img_platform" \
+            || fail "Provided platform image is not a valid file: \"$path_img_platform\""
+    fi
+fi
+
+# ensure full paths
+path_dir_source=`readlink -e "$path_dir_source"` \
+    || fail "Unable to determine full path for source directory: \"$path_dir_source\""
+path_dir_destination=`readlink -m "$path_dir_destination"` \
+    || fail "Unable to determine full path for destination directory: \"$path_dir_destination\""
+path_dir_tmp=`readlink -m "$path_dir_tmp"` \
+    || fail "Unable to determine full path for temporary directory: \"$path_dir_tmp\""
+test x"$path_img_root" = x \
+    || path_img_root=`readlink -e "$path_img_root"` \
+    || fail "Unable to determine full path for root image: \"$path_img_root\""
+test x"$path_dir_root" = x \
+    || path_dir_root=`readlink -e "$path_dir_root"` \
+    || fail "Unable to determine full path for root directory: \"$path_dir_root\""
+test x"$path_img_platform" = x \
+    || path_img_platform=`readlink -e "$path_img_platform"` \
+    || fail "Unable to determine full path for platform image: \"$path_img_platform\""
+test x"$path_dir_platform" = x \
+    || path_dir_platform=`readlink -e "$path_dir_platform"` \
+    || fail "Unable to determine full path for platform directory: \"$path_dir_platform\""
+
+
+### SOURCE REQUIRED PLATFORM FILES
+
+echo
+echo '---------------'
+echo 'CHECKING SOURCE'
+echo '---------------'
+echo
+
+# platform-env
+RUN_ENV_PLATFORM_NAME=""
+test -f "$path_dir_source/platform-env" \
+    && . "$path_dir_source/platform-env" \
+    || fail "Unable to load required source file: \"platform-env\""
+test -f "$path_dir_source/conf/platform.conf" \
+    && . "$path_dir_source/conf/platform.conf" \
+    || fail "Unable to load required source file: \"conf/platform.conf\""
+for i in \
+    RUN_ENV_PLATFORM_NAME \
+    RUN_ENV_PLATFORM_VERSION \
+    PLATFORM_IMAGE_PLATFORM \
+    PLATFORM_IMAGE_KERNEL \
+    PLATFORM_IMAGE_INITRD
+do
+    eval "test x\"\$$i\" = x" \
+        && fail "Required variable not defined by source files: $i"
+done
+
+# setlist
+SETLIST_COPY=""
+SETLIST_UNINSTALL=""
+SETLIST_INSTALL=""
+test -f "$path_dir_source/setlist" \
+    && . "$path_dir_source/setlist" \
+    || fail "Unable to load required source file: \"setlist\""
+test x"$SETLIST_COPY" = x \
+    && fail "Required variable not defined by source files: SETLIST_COPY"
+
+
+### CREATE
+
+if test x"$should_create" = x1; then
+
+    echo
+    echo '------'
+    echo 'CREATE'
+    echo '------'
+    echo
+
+    # make temporary directory
+    mkdir -p "$path_dir_tmp" \
+        || fail "Unable to create tmp directory: \"$path_dir_tmp\""
+
+    # mount tmpfs
+    mount -t tmpfs tmpfs "$path_dir_tmp" \
+        || fail "Unable to mount temporary filesystem on tmp directory: \"$path_dir_tmp\""
+
+    # make child directories
+    for i in \
+        "$name_dir_root" \
+        "$name_dir_export" \
+        "$name_dir_union" \
+        "$name_dir_platform"
+    do
+        mkdir -p "$path_dir_tmp/$i" \
+            || fail "Unable to create tmp directory: \"$path_dir_tmp/$i\""
+    done
+
+    # mount root
+    if test x"$path_img_root" != x; then
+        mount -o ro,loop "$path_img_root" "$path_dir_tmp/$name_dir_root" \
+            || fail "Unable to mount image: \"$path_img_root\""
+    else
+        mount -o ro,bind "$path_dir_root" "$path_dir_tmp/$name_dir_root" \
+            || fail "Unable to bind directory: \"$path_dir_root\""
+    fi
+
+    # mount export layer tmpfs
+    mount -t tmpfs -o rw tmpfs "$path_dir_tmp/$name_dir_export" \
+        || fail "Unable to mount tmpfs: \"$path_dir_tmp/$name_dir_export\""
+
+    # mount platform (if specified)
+    if test x"$path_img_platform" != x; then
+        mount -o ro,loop "$path_img_platform" "$path_dir_tmp/$name_dir_platform" \
+            || fail "Unable to mount image: \"$path_img_platform\""
+    elif test x"$path_dir_platform" != x; then
+        mount -o ro,bind "$path_dir_platform" "$path_dir_tmp/$name_dir_platform" \
+            || fail "Unable to bind directory: \"$path_dir_platform\""
+    else
+        mount -t tmpfs -o ro tmpfs "$path_dir_tmp/$name_dir_platform" \
+            || fail "Unable to mount tmpfs: \"$path_dir_tmp/$name_dir_platform\""
+    fi
+
+    # copy platform content
+    rsync -axHAXS \
+        "$path_dir_tmp/$name_dir_platform/" \
+        "$path_dir_tmp/$name_dir_export" \
+        || fail "Unable to copy directory content: \"$path_dir_tmp/$name_dir_platform\""
+
+    # unmount platform
+    sync
+    umount "$path_dir_tmp/$name_dir_platform" \
+        || fail "Unable to unmount: \"$path_dir_tmp/$name_dir_platform"
+
+    # create unions
+    # root+export=union
+    mount \
+        -t overlayfs \
+        -o rw,lowerdir="$path_dir_tmp/$name_dir_root",upperdir="$path_dir_tmp/$name_dir_export" \
+        overlayfs \
+        "$path_dir_tmp/$name_dir_union" \
+        || fail "Unable to create union filesystem: \"$path_dir_tmp/$name_dir_union\""
+
+    # mount required chroot environment directories
+    for i in \
+        "/proc" \
+        "/dev" \
+        "/sys"
+    do
+        mount -o bind "$i" "$path_dir_tmp/$name_dir_union$i" \
+            || fail "Unable to bind directory: \"$i\""
+    done
+fi
+
+
+### SKEL
+
+if test x"$should_skel" = x1; then
+
+    if test -d "$path_dir_tmp/$name_dir_union/etc/skel"; then
+
+        echo
+        echo '----'
+        echo 'SKEL'
+        echo '----'
+        echo
+
+        # iterate applicable users
+        for i in user; do
+
+            # define home directory
+            test x"$i" = xroot \
+                && path_dir_home="/$i" \
+                || path_dir_home="/home/$i"
+
+            # replace home directory with skel directory
+            if test -d "$path_dir_tmp/$name_dir_union/${path_dir_home#/}"; then
+                chroot "$path_dir_tmp/$name_dir_union" rm -rf "$path_dir_home" \
+                    && chroot "$path_dir_tmp/$name_dir_union" cp -Rpf "/etc/skel" "$path_dir_home" \
+                    || fail "Unable to replace $path_dir_home with /etc/skel"
+
+                # change home directory owership
+                chroot "$path_dir_tmp/$name_dir_union" chown -R "$i:$i" "$path_dir_home" \
+                    || fail "Unable to change home directory ownership for user: $i"
+            fi
+        done
+    fi
+fi
+
+
+### COPY
+
+if test x"$should_copy" = x1; then
+
+    echo
+    echo '----'
+    echo 'COPY'
+    echo '----'
+    echo
+
+    # iterate through setlist, deleting and copying files / directories
+    path_to=""
+    path_from=""
+    for i in $SETLIST_COPY; do
+
+        if test x"$path_to" = x; then
+
+            # set "to" path
+            path_to=$path_dir_tmp/$name_dir_union/${i#/}
+            path_from=""
+
+            # delete if exists
+            if test -e "$path_to"; then
+                if test -d "$path_to"; then
+                    rm -rf "$path_to" \
+                        || fail "Unable to remove directory: $path_to"
+                else
+                    rm -f "$path_to" \
+                        || fail "Unable to remove file: $path_to"
+                fi
+            fi
+
+        else
+
+            # skip copy if the "from" path is a hyphen (-)
+            if test x"$i" != x'-'; then
+
+                # set "from" path
+                path_from=$path_dir_source/${i#/}
+
+                # copy
+                if test -e "$path_from"; then
+                    mkdir -p "`dirname "$path_to"`" \
+                        || fail "Unable to create parent directory for: \"$path_to\""
+                    cp -Rpf "$path_from" "$path_to" \
+                        || fail "Unable to copy source file \"$i\" to \"$path_to\""
+                else
+                    echo "Source file does not exist: \"$path_from\" - skipping..."
+                fi
+            fi
+
+            # clear paths
+            path_to=""
+            path_from=""
+        fi
+    done
+
+    # add the running platform name to the system's environment variables
+    path_environment=$path_dir_tmp/$name_dir_union/etc/environment
+    grep "RUN_ENV_PLATFORM_NAME=" "$path_environment" 1>/dev/null 2>&1 \
+        || echo "RUN_ENV_PLATFORM_NAME=$RUN_ENV_PLATFORM_NAME" >>"$path_environment" \
+        || fail "Unable to update the environment file: \"$path_environment\""
+
+    # add an exception to the sudoers file to retain the running platform name
+    # environment variable when using sudo
+    path_sudoers=$path_dir_tmp/$name_dir_union/etc/sudoers
+    chmod u+w "$path_sudoers"
+    echo '
+Defaults env_keep += "RUN_ENV_PLATFORM_NAME"' \
+        >>"$path_sudoers" \
+        || fail "Unable to update the sudoers file: \"$path_sudoers\""
+    chmod u-w "$path_sudoers"
+
+fi
+
+
+### UNINSTALL
+
+if test x"$should_uninstall" = x1; then
+
+    echo
+    echo '---------'
+    echo 'UNINSTALL'
+    echo '---------'
+    echo
+
+    # uninstall packages
+    if test x"$SETLIST_UNINSTALL" != x; then
+
+        echo
+        echo "Uninstalling Packages: $SETLIST_UNINSTALL"
+        echo
+
+        chroot "$path_dir_tmp/$name_dir_union" apt-get autoremove --purge -y $SETLIST_UNINSTALL \
+            || fail "Unable to uninstall setlist packages"
+        chroot "$path_dir_tmp/$name_dir_union" apt-get autoremove --purge -y
+    fi
+fi
+
+
+### INSTALL
+
+if test x"$should_install" = x1; then
+
+    # install packages
+    if test -d "$path_dir_source/install"; then
+
+        echo
+        echo '-------'
+        echo 'INSTALL'
+        echo '-------'
+        echo
+
+        # bind install directory into the chroot environment
+        mount --bind "$path_dir_source/install" "$path_dir_tmp/$name_dir_union/mnt" \
+            || fail "Unable to bind package install directory to chroot environment"
+        for i in $SETLIST_INSTALL; do
+            package=`echo "$path_dir_source/install/${i}_"*.deb | sort --version-sort --reverse | head -n1`
+            test x"$package" != "$path_dir_source/install/${i}_*.deb" -a -f "$package" \
+                || fail "Unable to find package: \"$i\""
+            package=`basename "$package"`
+
+            echo
+            echo "Installing Package: $i ($package)"
+            echo
+
+            chroot "$path_dir_tmp/$name_dir_union" dpkg -i "/mnt/$package" \
+                || fail "Unable to install package: \"$package\""
+        done
+
+        # unmount bound chroot install directory
+        umount "$path_dir_tmp/$name_dir_union/mnt" \
+            || fail "Unable to unbind package install directory from chroot environment"
+    fi
+fi
+
+
+### BUILD
+
+if test x"$should_build" = x1; then
+
+    echo
+    echo '-----'
+    echo 'BUILD'
+    echo '-----'
+    echo
+
+    # rebuild the initramfs image
+    chroot "$path_dir_tmp/$name_dir_union" update-initramfs -u \
+        || fail "Unable to rebuild the initramfs image"
+fi
+
+
+### EXPORT
+
+if test x"$should_export" = x1; then
+
+    echo
+    echo '------'
+    echo 'EXPORT'
+    echo '------'
+    echo
+
+    # backup (rename) existing files
+    for i in \
+        "$path_dir_destination/$PLATFORM_IMAGE_PLATFORM" \
+        "$path_dir_destination/$PLATFORM_IMAGE_PLATFORM"-* \
+        "$path_dir_destination/$PLATFORM_IMAGE_INITRD" \
+        "$path_dir_destination/$PLATFORM_IMAGE_INITRD"-* \
+        "$path_dir_destination/$PLATFORM_IMAGE_KERNEL" \
+        "$path_dir_destination/$PLATFORM_IMAGE_KERNEL"-*
+    do
+        if test -e "$i"; then
+            test -f "$i" \
+                && mv "$i" "$i~" \
+                || fail "Unable to rename existing image: \"$i\""
+        fi
+    done
+
+    # ensure destination directory exists
+    mkdir -p "$path_dir_destination" \
+        || fail "Unable to create destination directory: \"$path_dir_destination\""
+
+    # compress export directory to platform image
+    name_img_platform_out="platform.sfs"
+    test x"$RUN_ENV_PLATFORM_VERSION" != x \
+        && name_img_platform_out=$name_img_platform_out-$RUN_ENV_PLATFORM_VERSION
+    mksquashfs \
+        "$path_dir_tmp/$name_dir_export/" \
+        "$path_dir_destination/$name_img_platform_out" \
+        -e "var/cache/apt" \
+        -e "var/lib/apt/lists" \
+        -e "var/log" \
+        || fail "Unable to compress platform image"
+
+    # copy newest kernel image
+    path_img_kernel=$path_dir_tmp/$name_dir_union/boot/$PLATFORM_IMAGE_KERNEL \
+        && path_img_kernel=`for i in "$path_img_kernel" "$path_img_kernel"-*; do test -f "$i" && echo "$i"; done` \
+        && path_img_kernel=`echo "$path_img_kernel" | sort --version-sort --reverse` \
+        && path_img_kernel=`echo "$path_img_kernel" | head -n1` \
+        || fail "Unable to determine kernel image file path"
+    cp -p "$path_img_kernel" "$path_dir_destination/$(basename "$path_img_kernel")" \
+        || fail "Unable to copy kernel image to destination"
+
+    # copy newest initramfs image
+    path_img_initrd=$path_dir_tmp/$name_dir_union/boot/$PLATFORM_IMAGE_INITRD \
+        && path_img_initrd=`for i in "$path_img_initrd" "$path_img_initrd"-*; do test -f "$i" && echo "$i"; done` \
+        && path_img_initrd=`echo "$path_img_initrd" | sort --version-sort --reverse` \
+        && path_img_initrd=`echo "$path_img_initrd" | head -n1` \
+        || fail "Unable to determine initramfs image file path"
+    cp -p "$path_img_initrd" "$path_dir_destination/$(basename "$path_img_initrd")" \
+        || fail "Unable to copy initramfs image to destination"
+fi
+
+
+### CLEAN
+
+if test x"$should_clean" = x1; then
+
+    echo
+    echo '-----'
+    echo 'CLEAN'
+    echo '-----'
+    echo
+
+    # unmount chroot environment
+    for i in \
+        "/proc" \
+        "/dev" \
+        "/sys" \
+        "/mnt"
+    do
+        umount "$path_dir_tmp/$name_dir_union$i"
+    done
+
+    # unmount unions and remaining child directories
+    for i in \
+        "$name_dir_union" \
+        "$name_dir_export" \
+        "$name_dir_root"
+    do
+        umount "$path_dir_tmp/$i"
+    done
+
+# Unnecessary when tmpfs is used
+#
+#    # remove child directories
+#    for i in \
+#        "$name_dir_union" \
+#        "$name_dir_export" \
+#        "$name_dir_platform" \
+#        "$name_dir_root"
+#    do
+#        rmdir "$path_dir_tmp/$i" \
+#            || echo "Unable to remove temporary directory: \"$path_dir_tmp/$i\"" >&2
+#    done
+#
+
+    # unmount temporary directory
+    umount "$path_dir_tmp" \
+        || fail "Unable to unmount temporary directory: \"$path_dir_tmp\""
+
+    # remove temporary directory
+    rmdir "$path_dir_tmp" \
+        || echo "Unable to remove temporary directory: \"$path_dir_tmp\"" >&2
+fi
+
+echo
+echo "Done."
