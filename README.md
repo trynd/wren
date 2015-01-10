@@ -24,7 +24,7 @@ Great for LAN parties of all sorts. Pretty handy for troubleshooting too.
 |**Then you remove the USB stick and hand it to another developer.**
 |The next developer boots up their machine using the same options and again removes the USB stick from their laptop. You're now both running identical development machines (though one of you might want to change your computer's name on the network).
 |This continues on for a couple more guys and gals and all of a sudden you have yourself a full development team running the exact same software configured the exact same way.
-|But what's this? Your resident designer show up to the party! Luckily you've also preconfigured a front-end development save image — with tools like GIMP, Inkscape, Scribus, and Blender 3D — so you hand the new guy your Wren stick and tell him to boot up the "Graphics" image.
+|But what's this? Your resident designer shows up to the party! Luckily you've also preconfigured a front-end development save image — with tools like GIMP, Inkscape, Scribus, and Blender 3D — so you hand the new guy your Wren stick and tell him to boot up the "Graphics" image.
 |You've just given your development team everything they need for a full day's work in less time than it'll take you to explain to them what you're working on.
 
 ### Incremental and Separate Saves, On-Demand
