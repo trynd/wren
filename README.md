@@ -18,14 +18,23 @@ This also allows for booting multiple machines from the same portable media and 
 
 Great for LAN parties of all sorts. Pretty handy for troubleshooting too.
 
-|Example
-|-------
-|Let's say you want to put together a little hackathon with some friends and you just happen to be carrying Wren on a USB stick configured with a full Java development suite. You plug the USB stick into your laptop and boot the save image — containing Eclipse, Maven, and whatever other tools you may be using — using the `wren-unmount` boot option.
-|**Then you remove the USB stick and hand it to another developer.**
-|The next developer boots up their machine using the same options and again removes the USB stick from their laptop. You're now both running identical development machines (though one of you might want to change your computer's name on the network).
-|This continues on for a couple more guys and gals and all of a sudden you have yourself a full development team running the exact same software configured the exact same way.
-|But what's this? Your resident designer shows up to the party! Luckily you've also preconfigured a front-end development save image — with tools like GIMP, Inkscape, Scribus, and Blender 3D — so you hand the new guy your Wren stick and tell him to boot up the "Graphics" image.
-|You've just given your development team everything they need for a full day's work in less time than it'll take you to explain to them what you're working on.
+---
+
+#### Example
+
+Let's say you want to put together a little hackathon with some friends and you just happen to be carrying Wren on a USB stick configured with a full Java development suite. You plug the USB stick into your laptop and boot the save image — containing Eclipse, Maven, and whatever other tools you may be using — using the `wren-unmount` boot option.
+
+**Then you remove the USB stick and hand it to another developer.**
+
+The next developer boots up their machine using the same options and again removes the USB stick from their laptop. You're now both running identical development machines (though one of you might want to change your computer's name on the network).
+
+This continues on for a couple more guys and gals and all of a sudden you have yourself a full development team running the exact same software configured the exact same way.
+
+But what's this? Your resident designer shows up to the party! Luckily you've also preconfigured a front-end development save image — with tools like GIMP, Inkscape, Scribus, and Blender 3D — so you hand the new guy your Wren stick and tell him to boot up the "Graphics" image.
+
+You've just given your development team everything they need for a full day's work in less time than it'll take you to explain to them what you're working on.
+
+---
 
 ### Incremental and Separate Saves, On-Demand
 
@@ -37,14 +46,23 @@ When you're working on some *pretty experimental stuff* — the kind of stuff th
 
 Not only can you write your changes to disk when *you* want to, but you can also write each change set to a *separate* save image, allowing you to make incremental changes and roll back a couple of steps if things go haywire.
 
-|Example
-|-------
-|You've been doing this whole *Linux* thing for a while now and decide it's about time to try your hand at writing some device drivers (*go get 'em, tiger*).
-|You don't want to keep shutting down your development environment every time something goes wrong, but you do want it to be available while you're testing to make tweaks when things are going well.
-|Luckily you've booted up your development environment using the `wren-to-ram` boot option. You're still able to save to disk when you make changes, but you can also, at any time, unmount the drive and move it over to your test machine.
-|So you make a few changes. Instead of loading the driver on your development machine you *save to disk* and then *unmount* and remove it from your development system. You use it to boot up your test machine using the `wren-unmount` boot option and then move it back over to your development machine for future saves. In the mean time, your test machine is now running the same environment as your development machine. You load up the driver and... *crash*. Oh well.
-|You tweak a bit more on your development machine and repeat the process, but this time around things seem to be working pretty well. You open up the dev tools on your test machine and tweak the driver options until something breaks and... *crash*. Back to the drawing board.
-|Rinse and repeat as many times as it takes. You'll get it there, and you'll do it far faster than you normally would because you can reboot that test machine as many times (and in as many states) as you need to.
+---
+
+#### Example
+
+You've been doing this whole *Linux* thing for a while now and decide it's about time to try your hand at writing some device drivers (*go get 'em, tiger*).
+
+You don't want to keep shutting down your development environment every time something goes wrong, but you do want it to be available while you're testing to make tweaks when things are going well.
+
+Luckily you've booted up your development environment using the `wren-to-ram` boot option. You're still able to save to disk when you make changes, but you can also, at any time, unmount the drive and move it over to your test machine.
+
+So you make a few changes. Instead of loading the driver on your development machine you *save to disk* and then *unmount* and remove it from your development system. You use it to boot up your test machine using the `wren-unmount` boot option and then move it back over to your development machine for future saves. In the mean time, your test machine is now running the same environment as your development machine. You load up the driver and... *crash*. Oh well.
+
+You tweak a bit more on your development machine and repeat the process, but this time around things seem to be working pretty well. You open up the dev tools on your test machine and tweak the driver options until something breaks and... *crash*. Back to the drawing board.
+
+Rinse and repeat as many times as it takes. You'll get it there, and you'll do it far faster than you normally would because you can reboot that test machine as many times (and in as many states) as you need to.
+
+---
 
 ### Compressed Disk Images and Optional Swap Space
 
