@@ -1,0 +1,115 @@
+How To Build Wren From Scratch
+==============================
+
+This is a brief overview on how to build a portable USB Wren installation.
+It assumes a working knowledge of Linux, including how to mount, partition, and
+format hard disks.
+
+Wren is presently built around Ubuntu Desktop 14.04.1 LTS 32-bit. The 32-bit
+version has better system compatibility and boots using MBR instead of UEFI by
+default.
+
+The Ubuntu 14.04.1 LTS 32-bit LiveCD does not presently support loop devices.
+The Wren builder (wrender) requires loop devices, so Wren cannot be built from
+the Ubuntu LiveCD. This issue is addressed below.
+
+
+Requirements
+------------
+
+* Build machine or virtual machine with at least 2 GB RAM (4 GB preferred)
+* Temporary disk to store an Ubuntu installation
+* Portable USB disk, such as a thumb drive, 8 GB or larger
+* Ubuntu Desktop 14.04.1 LTS 32-bit LiveCD iso or disc
+* Network connection (disconnected during installation)
+
+
+Terminology
+-----------
+
+* LIVECD          The Ubuntu 14.04.1 LST 32-bit LiveCD iso or disc
+* ROOT DISK       The temporary disk used to store an Ubuntu installation
+* WREN DISK       The portable USB disk used to store the Wren installation
+* ROOT PARTITION  The bootable partition on the ROOT DISK containing Ubuntu
+* WREN PARTITION  The bootable partition on the WREN DISK containing Wren
+* ROOT IMAGE      A SquashFS image created from the ROOT PARTITION
+* WREN SOURCE     The Wren source code
+* PLATFORM IMAGE  A SquashFS image generated from the Wren build script
+* INITRD IMAGE    A cpio image containing the initramfs boot scripts
+* KERNEL IMAGE    A copy of the kernel image extracted from the ROOT IMAGE
+
+
+Assumptions
+-----------
+
+* ROOT DISK device path is /dev/sda
+* WREN DISK device path is /dev/sdb
+* WREN DISK will have 3 partitions
+  * sdb1  format:fat32       label:STORAGE  (at least 1 GiB)
+  * sdb2  format:linux-swap  label:SWAP     (at least 1 GiB)
+  * sdb3  format:ext2        label:WREN     (at least 4 GiB)
+* ROOT PARTITION will be mounted at /mnt/ROOT
+* WREN PARTITION will be mounted at /mnt/WREN
+
+
+STEP 1 - Prepare the WREN DISK (Boot from LIVECD)
+-------------------------------------------------
+
+* Boot using the LIVECD in "Try Ubuntu" mode.
+* Use gparted or fdisk/parted to partition and format the WREN DISK:
+  * Primary Partition 1  format:fat32       label:STORAGE  (1+ GiB)
+  * Primary Partition 2  format:linux-swap  label:SWAP     (1+ GiB)
+  * Primary Partition 3  format:ext2        label:WREN     (4+ GiB)
+* Set the boot flag on the WREN PARTITION (sdb3) to make it bootable
+* Mount the WREN PARTITION
+* Install Grub to the WREN DISK (root/sudo)
+  * grub-install --force --no-floppy --boot-directory=/mnt/WREN/boot /dev/sdb
+
+
+STEP 2 - Generate a Root Image (Boot from LIVECD)
+-------------------------------------------------
+
+* DISCONNECT FROM THE NETWORK
+* Boot using the LIVECD in "Try Ubuntu" mode.
+* Install Ubuntu to the ROOT DISK, but DO NOT reboot.
+* CONNECT TO THE NETWORK
+* Update apt package list (root/sudo)
+  * apt-get update
+* Use apt to install "squashfs-tools" (root/sudo)
+  * apt-get install squashfs-tools
+* Mount the ROOT PARTITION as read-only
+* Mount the WREN PARTITION as read-write
+* Create a boot/images directory on the WREN PARTITION
+* Use mksquashfs to generate the ROOT IMAGE (root/sudo)
+  * mksquashfs /mnt/ROOT /mnt/WREN/boot/images/root.sfs -comp gzip
+
+
+STEP 3 - Build Wren Images (Boot from ROOT DISK)
+------------------------------------------------
+
+* Boot from the ROOT DISK or use an existing Ubuntu 14.04.1 LTS installation.
+* Download the WREN SOURCE
+* Remove all git related files from the WREN SOURCE
+* cd to the WREN SOURCE install/ directory
+* Download required builder packages from apt into WREN SOURCE install/
+  * apt-get download squashfs-tools watershed lvm2
+* Use dpkg to install squashfs-tools package (if it's not already installed)
+* cd to the WREN SOURCE directory
+* Create a boot/conf directory on the WREN PARTITION
+* Copy grub.cfg from WREN SOURCE conf/ to WREN PARTITION boot/grub/
+* Copy *.conf   from WREN SOURCE conf/ to WREN PARTITION boot/conf/
+* Build the Wren images (root/sudo)
+  * ./wrender -r /mnt/WREN/boot/images/root.sfs -d /mnt/WREN/boot/images
+* cd to the WREN PARTITION boot/images directory
+* Create symlinks for the INITRD IMAGE and KERNEL IMAGE (root/sudo)
+  * ln -s initrd.img-* initrd.img
+  * ln -s vmlinuz-* vmlinuz
+
+
+STEP 4 - Test (Boot from WREN DISK)
+-----------------------------------
+
+* Boot from the WREN DISK
+* Select from the Grub menu
+* Wait for Ubuntu welcome screen
+* Login
