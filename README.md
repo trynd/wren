@@ -18,8 +18,6 @@ This also allows for booting multiple machines from the same portable media and 
 
 Great for LAN parties of all sorts. Pretty handy for troubleshooting too.
 
----
-
 #### Example
 
 Let's say you want to put together a little hackathon with some friends and you just happen to be carrying Wren on a USB stick configured with a full Java development suite. You plug the USB stick into your laptop and boot the save image — containing Eclipse, Maven, and whatever other tools you may be using — using the `wren-unmount` boot option.
@@ -34,8 +32,6 @@ But what's this? Your resident designer shows up to the party! Luckily you've al
 
 You've just given your development team everything they need for a full day's work in less time than it'll take you to explain to them what you're working on.
 
----
-
 ### Incremental and Separate Saves, On-Demand
 
 Unlike a traditional computing setup, the Wren environment usually manages two copies of the data you're working on; one in memory and one on disk. That means you only save to disk when *you* want to (or not at all!).
@@ -45,8 +41,6 @@ Sure, this could be considered precarious in some scenarios... like when you *re
 When you're working on some *pretty experimental stuff* — the kind of stuff that may crash your system at any moment — you may not want to save every change to disk. If you did, it could take you hours to get the system up and running again. This is where Wren ***really*** shines.
 
 Not only can you write your changes to disk when *you* want to, but you can also write each change set to a *separate* save image, allowing you to make incremental changes and roll back a couple of steps if things go haywire.
-
----
 
 #### Example
 
@@ -61,8 +55,6 @@ So you make a few changes. Instead of loading the driver on your development mac
 You tweak a bit more on your development machine and repeat the process, but this time around things seem to be working pretty well. You open up the dev tools on your test machine and tweak the driver options until something breaks and... *crash*. Back to the drawing board.
 
 Rinse and repeat as many times as it takes. You'll get it there, and you'll do it far faster than you normally would because you can reboot that test machine as many times (and in as many states) as you need to.
-
----
 
 ### Compressed Disk Images and Optional Swap Space
 
