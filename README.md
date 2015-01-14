@@ -1,6 +1,6 @@
 # Wren
 
-These days computer users are on the go. Sometimes they need to bring along *not only* their data, but their *entire* computing environment; sometimes more than one.
+These days computer users are on the go. Sometimes they need to bring along not only their data, but their *entire* computing environment; sometimes more than one.
 
 The goal of the Wren project is to provide a portable, multi-system Linux environment which delivers all the capabilities a standard desktop user needs without requiring the user to write to physical media (e.g. a hard drive) on the machine they are using.
 
@@ -18,9 +18,9 @@ Save data (entire machine states) can be saved on a per-user or per-project basi
 
 ### Full In-Memory Mode
 
-The stand-out feature for most new users is Wren's ability to boot a machine and then keep running after the boot media has been removed.
+The stand-out feature for most new users is Wren's ability to boot a machine and then keep it running after the boot media has been removed.
 
-This also allows for booting multiple machines from the same portable media and keep them running simultaneously.
+This also allows for booting multiple machines from the same portable media and keeping them running simultaneously.
 
 Great for LAN parties of all sorts. Pretty handy for troubleshooting too.
 
