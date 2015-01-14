@@ -12,6 +12,7 @@ Save data (entire machine states) can be saved on a per-user or per-project basi
 
 * There's a thorough [Installation Guide](https://github.com/trynd/wren/wiki/Installation-Guide) on the wiki with step-by-step instructions for new users.
 * Advanced users may prefer the basic installation instructions in the [HOWTO](/HOWTO) file.
+* Check out the [Usage Guide](https://github.com/trynd/wren/wiki/Usage) to learn more about Wren's packaged tools and boot options.
 
 ## Features
 
