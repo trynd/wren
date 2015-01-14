@@ -8,11 +8,12 @@ To this end, the Wren project is currently designed around the Ubuntu 14.04.1 LT
 
 Save data (entire machine states) can be saved on a per-user or per-project basis, allowing for multiple development environments, school coursework, and even gaming rig setups to be stored along side each other but separately on the same portable media using minimal device storage space.
 
-## Installation
+## Installation and Maintenance
 
 * There's a thorough [Installation Guide](https://github.com/trynd/wren/wiki/Installation-Guide) on the wiki with step-by-step instructions for new users.
 * Advanced users may prefer the basic installation instructions in the [HOWTO](/HOWTO) file.
 * Check out the [Usage Guide](https://github.com/trynd/wren/wiki/Usage) to learn more about Wren's packaged tools and boot options.
+* For details on performing system and kernel upgrades, see [Upgrading Your System](https://github.com/trynd/wren/wiki/Upgrading-Your-System)
 
 ## Features
 
