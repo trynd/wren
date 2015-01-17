@@ -109,6 +109,7 @@ generate()
     local options
     local fallback_directory
     # local
+    local mount_device
     local kernel
     local initrd
     local versioned_kernel
@@ -121,28 +122,59 @@ generate()
 
     test x"$heading" = x && return 1
 
-    if test x"$directory" = x -o ! -d "${MOUNT_DEVICE%/}/${directory#/}"; then
+    mount_device=${MOUNT_DEVICE%/}
+
+    if test x"$directory" != x; then
+        directory="${directory%/}"
+        directory="/${directory#/}"
+    fi
+
+    # if the preferred directory doesn't exist, try only using the fallback
+    if test x"$directory" = x -o ! -d "$mount_device$directory"; then
         test x"$fallback_directory" != x \
-            && return `generate "$heading" "$fallback_directory" "$options"` \
-            || return 1
+            && generate "$heading" "$fallback_directory" "$options"
+        return $?
     fi
 
-    directory="/${directory#/}"
-    directory="${directory%/}"
+    if test x"$fallback_directory" != x; then
+        fallback_directory="${fallback_directory%/}"
+        fallback_directory="/${fallback_directory#/}"
+    fi
 
-    kernel="${directory}/$PLATFORM_IMAGE_KERNEL"
-    versioned_kernel=
-    kernel_version=
-    if test ! -f "${MOUNT_DEVICE%/}$kernel"; then
-        versioned_kernel=`getNewestExistingVersionedFilePath "${MOUNT_DEVICE%/}$kernel"` \
-            && kernel_version="${versioned_kernel#${MOUNT_DEVICE%/}$kernel}" \
+    kernel="$directory/$PLATFORM_IMAGE_KERNEL"
+    initrd="$directory/$PLATFORM_IMAGE_INITRD"
+
+    # if they don't both exist without version numbers in the preferred
+    # directory, search for version numbered files in the preferred and fallback
+    # directories.
+    if test ! -f "$mount_device$kernel" -o ! -f "$mount_device$initrd"; then
+
+        # find a workable kernel
+        versioned_kernel=`getNewestExistingVersionedFilePath "$mount_device$kernel"` \
+            && kernel_version="${versioned_kernel#$mount_device$kernel}" \
+            && test x"$kernel_version" != x \
             && kernel="$kernel$kernel_version" \
-            || { generate "$heading" "$fallback_directory" "$options" ; return $? ; }
-    fi
+            ||  {
+                    test x"$fallback_directory" != x -a -d "$mount_device$fallback_directory" \
+                        && kernel="$fallback_directory/$PLATFORM_IMAGE_KERNEL" \
+                        && versioned_kernel=`getNewestExistingVersionedFilePath "$mount_device$kernel"` \
+                        && kernel_version="${versioned_kernel#$mount_device$kernel}" \
+                        && test x"$kernel_version" != x \
+                        && kernel="$kernel$kernel_version" \
+                        || return $?
+                }
 
-    initrd="${directory}/$PLATFORM_IMAGE_INITRD$kernel_version"
-    test -f "${MOUNT_DEVICE%/}$initrd" \
-        || { generate "$heading" "$fallback_directory" "$options" ; return $? ; }
+        # find a matching initrd
+        initrd="${directory}/$PLATFORM_IMAGE_INITRD$kernel_version"
+        test -f "$mount_device$initrd" \
+            ||  {
+                    test x"$fallback_directory" != x -a -d "$mount_device$fallback_directory" \
+                        && initrd="${fallback_directory}/$PLATFORM_IMAGE_INITRD$kernel_version" \
+                        && test -f "$mount_device$initrd" \
+                        || return $?
+                }
+
+    fi
 
     test x"$options" = x || options=" $options"
 
@@ -152,6 +184,8 @@ menuentry \"$heading\" {
     linux $kernel root=$BOOT_DEVICE$options
     initrd $initrd
 }"
+
+    return 0
 }
 
 
