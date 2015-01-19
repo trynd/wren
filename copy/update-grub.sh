@@ -112,6 +112,8 @@ generate()
     local mount_device
     local kernel
     local initrd
+    local fallback_kernel
+    local fallback_initrd
     local versioned_kernel
     local kernel_version
 
@@ -136,13 +138,15 @@ generate()
         return $?
     fi
 
+    kernel="$directory/$PLATFORM_IMAGE_KERNEL"
+    initrd="$directory/$PLATFORM_IMAGE_INITRD"
+
     if test x"$fallback_directory" != x; then
         fallback_directory="${fallback_directory%/}"
         fallback_directory="/${fallback_directory#/}"
+        fallback_kernel="$fallback_directory/$PLATFORM_IMAGE_KERNEL"
+        fallback_initrd="$fallback_directory/$PLATFORM_IMAGE_INITRD"
     fi
-
-    kernel="$directory/$PLATFORM_IMAGE_KERNEL"
-    initrd="$directory/$PLATFORM_IMAGE_INITRD"
 
     # if they don't both exist without version numbers in the preferred
     # directory, search for version numbered files in the preferred and fallback
@@ -156,7 +160,7 @@ generate()
             && kernel="$kernel$kernel_version" \
             ||  {
                     test x"$fallback_directory" != x -a -d "$mount_device$fallback_directory" \
-                        && kernel="$fallback_directory/$PLATFORM_IMAGE_KERNEL" \
+                        && kernel="$fallback_kernel" \
                         && versioned_kernel=`getNewestExistingVersionedFilePath "$mount_device$kernel"` \
                         && kernel_version="${versioned_kernel#$mount_device$kernel}" \
                         && test x"$kernel_version" != x \
@@ -165,15 +169,31 @@ generate()
                 }
 
         # find a matching initrd
+        # first check the preferred directory for a versioned initrd image
         initrd="${directory}/$PLATFORM_IMAGE_INITRD$kernel_version"
-        test -f "$mount_device$initrd" \
-            ||  {
-                    test x"$fallback_directory" != x -a -d "$mount_device$fallback_directory" \
-                        && initrd="${fallback_directory}/$PLATFORM_IMAGE_INITRD$kernel_version" \
-                        && test -f "$mount_device$initrd" \
-                        || return $?
-                }
+        if ! test -f "$mount_device$initrd"; then
 
+            # check the fallback directory
+            if test x"$fallback_directory" != x -a -d "$mount_device$fallback_directory"; then
+
+                # first check the fallback directory for unversioned images
+                if test -f "$mount_device$fallback_kernel" -a -f "$mount_device$fallback_initrd"; then
+                    kernel="$fallback_kernel"
+                    initrd="$fallback_initrd"
+                else
+                    # check the fallback directory for a versioned initrd image
+                    initrd="$fallback_initrd$kernel_version" \
+                    && test -f "$mount_device$initrd" \
+                    || return $?
+                fi
+
+            else
+
+                return 1
+
+            fi
+
+        fi
     fi
 
     test x"$options" = x || options=" $options"
