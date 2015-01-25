@@ -95,14 +95,6 @@ OPTIONS
                         provided, the current default save file path will be
                         used instead.
 
-AUTHOR
-
-    Written by Michael Spencer.
-
-COPYRIGHT
-
-    Copyright (c) 2013-2015 Trynd, LLC.
-
 EOF
 
     test x"$1" != x && exit $1

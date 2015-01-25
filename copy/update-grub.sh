@@ -49,14 +49,6 @@ DESCRIPTION
 
     Writes a new grub.cfg file to match current device save data to standard
     output. Use redirection to write to a file.
-
-AUTHOR
-
-    Written by Michael Spencer.
-
-COPYRIGHT
-
-    Copyright (c) 2013-2015 Trynd, LLC.
 "
 printUsage()
 {
