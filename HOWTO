@@ -6,8 +6,8 @@ It assumes a working knowledge of Linux, including how to mount, partition, and
 format hard disks.
 
 Wren is presently built around Ubuntu Desktop 14.04.1 LTS 32-bit. The 32-bit
-version has better system compatibility and boots using MBR instead of UEFI by
-default.
+version has better system compatibility and partitions/boots using MBR/BIOS
+instead of GPT/UEFI.
 
 The Ubuntu 14.04.1 LTS 32-bit LiveCD does not presently support loop devices.
 The Wren builder (wrender) requires loop devices, so Wren cannot be built from

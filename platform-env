@@ -30,18 +30,18 @@
 # more details.
 #
 
-# Define the platform name.
+# Define the platform name (no whitespace allowed).
 if test x"$RUN_ENV_PLATFORM_NAME" = x; then
     RUN_ENV_PLATFORM_NAME=wren
 fi
 
 # Define the platform's display name.
 if test x"$RUN_ENV_PLATFORM_DISPLAY_NAME" = x; then
-    RUN_ENV_PLATFORM_DISPLAY_NAME=Wren
+    RUN_ENV_PLATFORM_DISPLAY_NAME="Wren"
 fi
 
-# Define the platform version.
-RUN_ENV_PLATFORM_VERSION=0.1.0
+# Define the platform version (no whitespace allowed).
+RUN_ENV_PLATFORM_VERSION=0.1.1
 
 # Define mount points.
 MOUNT_ENV=/mnt/$RUN_ENV_PLATFORM_NAME
