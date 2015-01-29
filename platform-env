@@ -41,7 +41,7 @@ if test x"$RUN_ENV_PLATFORM_DISPLAY_NAME" = x; then
 fi
 
 # Define the platform version (no whitespace allowed).
-RUN_ENV_PLATFORM_VERSION=0.1.0
+RUN_ENV_PLATFORM_VERSION=0.1.1
 
 # Define mount points.
 MOUNT_ENV=/mnt/$RUN_ENV_PLATFORM_NAME
