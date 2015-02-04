@@ -47,6 +47,7 @@ SETLIST_COPY="
     ${RUN_ENV_PLATFORM_PATH}/platform.conf.example                  conf/platform.conf
     ${RUN_ENV_PLATFORM_PATH}/wren                                   copy/wren
     ${RUN_ENV_PLATFORM_PATH}/save.sh                                copy/save.sh
+    ${RUN_ENV_PLATFORM_PATH}/save-btrfs.sh                          copy/save-btrfs.sh
     ${RUN_ENV_PLATFORM_PATH}/tools                                  -
     ${RUN_ENV_PLATFORM_PATH}/tools/enable-root.sh                   tools/enable-root.sh
     ${RUN_ENV_PLATFORM_PATH}/tools/disable-root.sh                  tools/disable-root.sh
@@ -76,4 +77,4 @@ SETLIST_UNINSTALL="grub grub-common grub-pc grub2 grub2-common lilo elilo apt-xa
 
 # A single string of space-separated package names used to filter files in the
 # "install" directory to be passed to "dpkg -i" (in order) for installation.
-SETLIST_INSTALL="squashfs-tools watershed lvm2"
+SETLIST_INSTALL="squashfs-tools watershed lvm2 btrfs-tools"

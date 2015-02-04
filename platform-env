@@ -42,6 +42,7 @@ fi
 # Define mount points.
 MOUNT_ENV=/mnt/$RUN_ENV_PLATFORM_NAME
 MOUNT_IMAGES=$MOUNT_ENV/xx-images
+MOUNT_VOLUMES=$MOUNT_ENV/xx-volumes
 MOUNT_DEVICE=$MOUNT_ENV/00-device
 MOUNT_ROOT=$MOUNT_ENV/01-root
 MOUNT_PLATFORM=$MOUNT_ENV/02-platform
@@ -67,6 +68,11 @@ LVM_PATH_MAPPER_LV_SAVE_REAL=/dev/mapper/$LVM_NAME_MAPPER_LV_SAVE_REAL
 LVM_PATH_MAPPER_LV_SNAPSHOT=/dev/mapper/$LVM_NAME_MAPPER_LV_SNAPSHOT
 LVM_PATH_MAPPER_LV_SNAPSHOT_COW=/dev/mapper/$LVM_NAME_MAPPER_LV_SNAPSHOT_COW
 
+# Define volume/subvolume names and paths.
+VOLUME_NAME_ACTIVE=active
+SUBVOLUME_NAME_ROOT=@
+SUBVOLUME_NAME_SNAPSHOT=@snapshot
+
 # Define runtime environment paths.
 RUN_ENV_DIRECTORY=/var/run/$RUN_ENV_PLATFORM_NAME
 RUN_ENV_DIRECTORY_CONF=$RUN_ENV_DIRECTORY/conf
@@ -75,6 +81,7 @@ RUN_ENV_DIRECTORY_TMP=/tmp/$RUN_ENV_PLATFORM_NAME
 
 # Determine and define command paths.
 CMD_LVM=`which lvm` || CMD_LVM=lvm
+CMD_BTRFS=`which btrfs` || CMD_BTRFS=btrfs
 CMD_STAT=`which stat` || CMD_STAT=stat
 CMD_SORT=`which sort` || CMD_SORT=sort
 CMD_SWAPON=`which swapon` || CMD_SWAPON=swapon
@@ -1418,6 +1425,104 @@ getNewestExistingVersionedDirectoryPath()
     test x"$result" != x -a -d "$result" \
         && echo "$result" \
         || return $?
+
+    return 0
+}
+
+
+###
+### VOLUME MANAGEMENT
+###
+
+
+# Determine an absolute path for the (in-memory) active volume image file,
+# which serves as RAM-based storage for active device-user-specific save
+# content.
+getActiveVolumeImagePath()
+{
+    testVariableDefinition MOUNT_IMAGES || return $?
+    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE || return $?
+
+    echo "$MOUNT_IMAGES/$PLATFORM_IMAGE_VOLUME_ACTIVE"
+
+    return 0
+}
+
+# Determine an absolute path for the (in-memory) active volume, which maps to
+# the active volume image and serves as RAM-based storage for active
+# device-user-specific save content.
+getActiveVolumePath()
+{
+    testVariableDefinition MOUNT_VOLUMES || return $?
+    testVariableDefinition VOLUME_NAME_ACTIVE || return $?
+
+    echo "$MOUNT_VOLUMES/$VOLUME_NAME_ACTIVE"
+
+    return 0
+}
+
+# Determine an absolute path for the (in-memory) active volume root subvolume,
+# which serves as RAM-based storage for the active device-user-specific save
+# content's root file system tree.
+getActiveVolumeRootSubvolumePath()
+{
+    testVariableDefinition SUBVOLUME_NAME_ROOT || return $?
+
+    active_volume_path=`getActiveVolumePath` || return $?
+
+    echo "$active_volume_path/$SUBVOLUME_NAME_ROOT"
+
+    return 0
+}
+
+# Determine an absolute path for the (in-memory) active volume snapshot
+# subvolume, which serves as RAM-based delta storage during save-to-disk
+# procedures.
+getActiveVolumeSnapshotSubvolumePath()
+{
+    testVariableDefinition SUBVOLUME_NAME_SNAPSHOT || return $?
+
+    active_volume_path=`getActiveVolumePath` || return $?
+
+    echo "$active_volume_path/$SUBVOLUME_NAME_SNAPSHOT"
+
+    return 0
+}
+
+createSubvolumeSnapshot()
+{
+    # required
+    local base_subvolume_path
+    local snapshot_subvolume_path
+
+    base_subvolume_path=$1
+    snapshot_subvolume_path=$2
+
+    test x"$base_subvolume_path" = x \
+        && { echo "Base subvolume path required" >&2 ; return 1 ; }
+    test x"$snapshot_subvolume_path" = x \
+        && { echo "Snapshot subvolume path required" >&2 ; return 1 ; }
+
+    $CMD_BTRFS subvolume snapshot -r \
+        "$base_subvolume_path" \
+        "$snapshot_subvolume_path" \
+        1>/dev/null \
+        || return $?
+
+    return 0
+}
+
+deleteSubvolume()
+{
+    # required
+    local subvolume_path
+
+    subvolume_path=$1
+
+    test x"$subvolume_path" = x \
+        && { echo "Subvolume path required" >&2 ; return 1 ; }
+
+    $CMD_BTRFS subvolume delete "$subvolume_path" 1>/dev/null || return $?
 
     return 0
 }
