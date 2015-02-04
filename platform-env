@@ -52,22 +52,6 @@ MOUNT_TMP=$MOUNT_ENV/xx-tmp
 MOUNT_SAVE_TMP=$MOUNT_ENV/xx-save-tmp
 MOUNT_SNAPSHOT_TMP=$MOUNT_ENV/xx-snapshot-tmp
 
-# Define LVM volume names and device paths.
-LVM_NAME_VG=vg_$RUN_ENV_PLATFORM_NAME
-LVM_NAME_LV_SAVE=lv_save
-LVM_NAME_LV_SNAPSHOT=lv_snapshot
-LVM_NAME_MAPPER_LV_SAVE=$LVM_NAME_VG-$LVM_NAME_LV_SAVE
-LVM_NAME_MAPPER_LV_SAVE_REAL=$LVM_NAME_VG-$LVM_NAME_LV_SAVE-real
-LVM_NAME_MAPPER_LV_SNAPSHOT=$LVM_NAME_VG-$LVM_NAME_LV_SNAPSHOT
-LVM_NAME_MAPPER_LV_SNAPSHOT_COW=$LVM_NAME_VG-$LVM_NAME_LV_SNAPSHOT-cow
-LVM_PATH_VG=/dev/$LVM_NAME_VG
-LVM_PATH_LV_SAVE=$LVM_PATH_VG/$LVM_NAME_LV_SAVE
-LVM_PATH_LV_SNAPSHOT=$LVM_PATH_VG/$LVM_NAME_LV_SNAPSHOT
-LVM_PATH_MAPPER_LV_SAVE=/dev/mapper/$LVM_NAME_MAPPER_LV_SAVE
-LVM_PATH_MAPPER_LV_SAVE_REAL=/dev/mapper/$LVM_NAME_MAPPER_LV_SAVE_REAL
-LVM_PATH_MAPPER_LV_SNAPSHOT=/dev/mapper/$LVM_NAME_MAPPER_LV_SNAPSHOT
-LVM_PATH_MAPPER_LV_SNAPSHOT_COW=/dev/mapper/$LVM_NAME_MAPPER_LV_SNAPSHOT_COW
-
 # Define volume/subvolume names and paths.
 VOLUME_NAME_ACTIVE=active
 SUBVOLUME_NAME_ROOT=@
@@ -80,7 +64,6 @@ RUN_ENV_DIRECTORY_PROC=$RUN_ENV_DIRECTORY/proc
 RUN_ENV_DIRECTORY_TMP=/tmp/$RUN_ENV_PLATFORM_NAME
 
 # Determine and define command paths.
-CMD_LVM=`which lvm` || CMD_LVM=lvm
 CMD_BTRFS=`which btrfs` || CMD_BTRFS=btrfs
 CMD_STAT=`which stat` || CMD_STAT=stat
 CMD_SORT=`which sort` || CMD_SORT=sort
@@ -764,30 +747,6 @@ getExistingSaveImagePath()
     return 0
 }
 
-# Determine an absolute path for the (in-memory) LVM save image file, which
-# serves as RAM-based storage for active device-user-specific save content.
-getLvmSaveImagePath()
-{
-    testVariableDefinition MOUNT_IMAGES || return $?
-    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE || return $?
-
-    echo "$MOUNT_IMAGES/$PLATFORM_IMAGE_LVM_SAVE"
-
-    return 0
-}
-
-# Determine an absolute path for the (in-memory) LVM snapshot image file, which
-# serves as RAM-based delta storage during save-to-disk procedures.
-getLvmSnapshotImagePath()
-{
-    testVariableDefinition MOUNT_IMAGES || return $?
-    testVariableDefinition PLATFORM_IMAGE_LVM_SNAPSHOT || return $?
-
-    echo "$MOUNT_IMAGES/$PLATFORM_IMAGE_LVM_SNAPSHOT"
-
-    return 0
-}
-
 # Copy the specified file to the specified directory. The directory will be
 # created if it does not exist.
 copyFileTo()
@@ -852,345 +811,35 @@ getDiskUsage()
     return 0
 }
 
-# Determine the total block size of the provided LVM physical volume (the device
-# backing a logical volume - i.e. a disk or loop device path).
-getLvmPhysicalExtentBlockCount()
+# Increase the max file size of the provided sparse image by the number of
+# bytes specified.
+increaseSparseImageSize()
 {
     # required
-    local physical_volume_path
-    # local
-    local result
-
-    physical_volume_path=$1
-
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    result=`$CMD_LVM pvdisplay "$physical_volume_path"` \
-        && result=`echo "$result" | grep -i '^[[:space:]]*Total[[:space:]]\+PE'` \
-        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
-        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
-        && result=`echo "$result" | cut -d' ' -f1` \
-        || { code=$? ; echo "Could not determine LVM physical extent block count for physical volume \"$physical_volume_path\"" >&2 ; return $code ; }
-    echo "$result"
-
-    return 0
-}
-
-# Determine the number of unallocated (not in use) blocks on the provided LVM
-# physical volume (the device backing a logical volume - i.e. a disk or loop
-# device path).
-getLvmPhysicalExtentFreeBlockCount()
-{
-    # required
-    local physical_volume_path
-    # local
-    local result
-
-    physical_volume_path=$1
-
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    result=`$CMD_LVM pvdisplay "$physical_volume_path"` \
-        && result=`echo "$result" | grep -i '^[[:space:]]*Free[[:space:]]\+PE'` \
-        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
-        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
-        && result=`echo "$result" | cut -d' ' -f1` \
-        || { code=$? ; echo "Could not determine LVM physical extent free block count for physical volume \"$physical_volume_path\"" >&2 ; return $code ; }
-    echo "$result"
-
-    return 0
-}
-
-# Determine the number of allocated (in use) blocks on the provided LVM physical
-# volume (the device backing a logical volume - i.e. a disk or loop device
-# path).
-getLvmPhysicalExtentAllocatedBlockCount()
-{
-    # required
-    local physical_volume_path
-    # local
-    local result
-
-    physical_volume_path=$1
-
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    result=`$CMD_LVM pvdisplay "$physical_volume_path"` \
-        && result=`echo "$result" | grep -i '^[[:space:]]*Allocated[[:space:]]\+PE'` \
-        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
-        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
-        && result=`echo "$result" | cut -d' ' -f1` \
-        || { code=$? ; echo "Could not determine LVM physical extent free block count for physical volume \"$physical_volume_path\"" >&2 ; return $code ; }
-    echo "$result"
-
-    return 0
-}
-
-# Determine the total block size of the provided LVM logical volume (device
-# path).
-getLvmLogicalExtentBlockCount()
-{
-    # required
-    local logical_volume_path
-    # local
-    local result
-
-    logical_volume_path=$1
-
-    test x"$logical_volume_path" = x \
-        && { echo "Logical volume path required" >&2 ; return 1 ; }
-    result=`$CMD_LVM lvdisplay "$logical_volume_path"` \
-        && result=`echo "$result" | grep -i '^[[:space:]]*Current[[:space:]]\+LE'` \
-        && result=`echo "$result" | sed 's/[[:space:]]\+/ /g'` \
-        && result=`echo "$result" | sed 's/^[^0-9]*//'` \
-        && result=`echo "$result" | cut -d' ' -f1` \
-        || { code=$? ; echo "Could not determine LVM logical extent block count for logical volume \"$logical_volume_path\"" >&2 ; return $code ; }
-    echo "$result"
-
-    return 0
-}
-
-# Initialize a physical volume for use by LVM on the specified device path.
-createLvmPhysicalVolume()
-{
-    # required
-    local physical_volume_path
-
-    physical_volume_path=$1
-
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    $CMD_LVM pvcreate "$physical_volume_path" 1>/dev/null || return $?
-
-    return 0
-}
-
-# Remove LVM label(s) from the given physical volume device path and remove the
-# physical volume from any associated LVM volume group.
-removeLvmPhysicalVolume()
-{
-    # required
-    local physical_volume_path
-
-    physical_volume_path=$1
-
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    $CMD_LVM pvremove "$physical_volume_path" 1>/dev/null || return $?
-    $CMD_LVM vgreduce --removemissing 1>/dev/null 2>&1
-
-    return 0
-}
-
-# Create an LVM volume group with the provided name to manage the provided
-# physical volume (device path).
-createLvmVolumeGroup()
-{
-    # required
-    local volume_group_name
-    local physical_volume_path
-
-    volume_group_name=$1
-    physical_volume_path=$2
-
-    test x"$volume_group_name" = x \
-        && { echo "Volume group name required" >&2 ; return 1 ; }
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    $CMD_LVM vgcreate "$volume_group_name" "$physical_volume_path" 1>/dev/null || return $?
-
-    return 0
-}
-
-# Extend the provided LVM volume group (by name) by adding the provided
-# physical volume (device path).
-extendLvmVolumeGroup()
-{
-    # required
-    local volume_group_name
-    local physical_volume_path
-
-    volume_group_name=$1
-    physical_volume_path=$2
-
-    test x"$volume_group_name" = x \
-        && { echo "Volume group name required" >&2 ; return 1 ; }
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    $CMD_LVM vgextend "$volume_group_name" "$physical_volume_path" 1>/dev/null \
-        || return $?
-
-    return 0
-}
-
-# Reduce the provided LVM volume group (by name) by removing the provided
-# physical volume (device path).
-reduceLvmVolumeGroup()
-{
-    # required
-    local volume_group_name
-    local physical_volume_path
-
-    volume_group_name=$1
-    physical_volume_path=$2
-
-    test x"$volume_group_name" = x \
-        && { echo "Volume group name required" >&2 ; return 1 ; }
-    test x"$physical_volume_path" = x \
-        && { echo "Physical volume path required" >&2 ; return 1 ; }
-    $CMD_LVM vgreduce "$volume_group_name" "$physical_volume_path" 1>/dev/null \
-        || return $?
-
-    return 0
-}
-
-# Create an LVM logical volume with the provided name on the specified volume
-# group (by name), allocating the specified number of physical extent blocks
-# to the new logical volume.
-createLvmLogicalVolume()
-{
-    # required
-    local logical_volume_name
-    local volume_group_name
-    local physical_extent_block_count
-
-    logical_volume_name=$1
-    volume_group_name=$2
-    physical_extent_block_count=$3
-
-    test x"$logical_volume_name" = x \
-        && { echo "Logical volume name required" >&2 ; return 1 ; }
-    test x"$volume_group_name" = x \
-        && { echo "Volume group name required" >&2 ; return 1 ; }
-    test x"$physical_extent_block_count" = x \
-        && { echo "Physical extent block count required" >&2 ; return 1 ; }
-    $CMD_LVM lvcreate \
-        -l "$physical_extent_block_count" \
-        -n "$logical_volume_name" \
-        "$volume_group_name" \
-        1>/dev/null \
-        || return $?
-
-    return 0
-}
-
-# Create an LVM snapshot volume with the provided name based on the specified
-# logical volume (device path), allocating the specified number of physical
-# extent blocks to the new snapshot volume.
-createLvmSnapshotLogicalVolume()
-{
-    # required
-    local snapshot_volume_name
-    local logical_volume_path
-    local physical_extent_block_count
-
-    snapshot_volume_name=$1
-    logical_volume_path=$2
-    physical_extent_block_count=$3
-
-    test x"$snapshot_volume_name" = x \
-        && { echo "Snapshot volume name required" >&2 ; return 1 ; }
-    test x"$logical_volume_path" = x \
-        && { echo "Logical volume path required" >&2 ; return 1 ; }
-    test x"$physical_extent_block_count" = x \
-        && { echo "Physical extent block count required" >&2 ; return 1 ; }
-    $CMD_LVM lvcreate \
-        -pr -s \
-        -l "$physical_extent_block_count" \
-        -n "$snapshot_volume_name" \
-        "$logical_volume_path" \
-        1>/dev/null \
-        || return $?
-
-    return 0
-}
-
-# Remove an LVM logical volume (by device path) from the system.
-removeLvmLogicalVolume()
-{
-    # required
-    local logical_volume_path
-
-    logical_volume_path=$1
-
-    test x"$logical_volume_path" = x \
-        && { echo "Logical volume path required" >&2 ; return 1 ; }
-    $CMD_LVM lvremove "$logical_volume_path" 1>/dev/null || return $?
-
-    return 0
-}
-
-# Remove an LVM snapshot (logical) volume (by device path) from the system. This
-# is just like removing a standard logical volume, except that the snapshot
-# mapper name and snapshot cow (copy-on-write) mapper name must also be provided
-# so the device mapper can remove the snapshot's associated delta devices.
-removeLvmSnapshotLogicalVolume()
-{
-    # required
-    local snapshot_logical_volume_path
-    local snapshot_mapper_name
-    local snapshot_cow_mapper_name
-
-    snapshot_logical_volume_path=$1
-    snapshot_mapper_name=$2
-    snapshot_cow_mapper_name=$3
-
-    test x"$snapshot_logical_volume_path" = x \
-        && { echo "Snapshot logical volume path required" >&2 ; return 1 ; }
-    test x"$snapshot_mapper_name" = x \
-        && { echo "Snapshot mapper name required" >&2 ; return 1 ; }
-    test x"$snapshot_cow_mapper_name" = x \
-        && { echo "Snapshot copy-on-write mapper name required" >&2 ; return 1 ; }
-    dmsetup remove "$snapshot_mapper_name" || return $?
-    dmsetup remove "$snapshot_cow_mapper_name" || return $?
-    removeLvmLogicalVolume "$snapshot_logical_volume_path" || return $?
-
-    return 0
-}
-
-# Increase the storage size (and RAM usage) (in bytes) for active
-# device-user-specific save content by increasing the size of the in-memory
-# image file backing the associated LVM physical volume and then increasing the
-# hosted logical volume's block count. If no size increase (in bytes) is
-# specified, the platform-defined default size increment value will be used.
-increaseLvmSaveSize()
-{
-    testVariableDefinition LVM_PATH_LV_SAVE || return $?
-
-    # optional
+    local image_path
     local bytes_increase
-    # local
-    local image_lvm_save
-    local loop_lvm_save
-    local free_pe
-    local used_le
-    local new_le
 
-    bytes_increase=$1
-    if test x"$bytes_increase" = x; then
-        # use default value if it is available
-        testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT \
-            && bytes_increase=$PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT \
-            || { echo "Size increase (byte count) required." >&2 ; return 1 ; }
+    image_path=$1
+    bytes_increase=$2
+
+    test x"$image_path" = x \
+        && { echo "Image path required" >&2 ; return 1 ; }
+    test x"$bytes_increase" = x \
+        && { echo "Increase amount (in bytes) required" >&2 ; return 1 ; }
+
+    test -f "$image_path" \
+        || { echo "Could not locate image file: $image_path" >&2 ; return 1 ; }
+
+    truncate -c -s +"$bytes_increase" "$image_path" 1>/dev/null \
+        || { result=$? ; echo "Could not increase image file size" >&2 ; return $result ; }
+
+    # if the image file has as associated loop device, reinitialize its capacity
+    image_loop=`getImageLoop "$image_path"` 2>/dev/null \
+        || image_loop=""
+    if test x"$image_loop" != x; then
+        losetup -c "$image_loop" 1>/dev/null \
+            || { result=$? ; echo "Could not reset image loop device capacity" >&2 ; return $result ; }
     fi
-
-    image_lvm_save=`getLvmSaveImagePath` || return $?
-    test -x"$image_lvm_save" != x -a -f "$image_lvm_save" \
-        || { echo "Could not locate LVM save image" >&2; return 1 ; }
-
-    loop_lvm_save=`getImageLoop "$image_lvm_save"` || return $?
-
-    truncate -c -s +"$bytes_increase" "$image_lvm_save" 1>/dev/null || return $?
-    losetup -c "$loop_lvm_save" 1>/dev/null || return $?
-    $CMD_LVM pvresize "$loop_lvm_save" 1>/dev/null || return $?
-
-    free_pe=`getLvmPhysicalExtentFreeBlockCount "$loop_lvm_save"` || return $?
-    used_le=`getLvmLogicalExtentBlockCount "$LVM_PATH_LV_SAVE"` || return $?
-    new_le=$(($used_le+$free_pe)) || return $?
-
-    $CMD_LVM lvextend -l"$new_le" "$LVM_PATH_LV_SAVE" 1>/dev/null || return $?
-
-    resize2fs "$LVM_PATH_LV_SAVE" 1>/dev/null || return $?
 
     return 0
 }
@@ -1489,6 +1138,8 @@ getActiveVolumeSnapshotSubvolumePath()
     return 0
 }
 
+# Create a subvolume snapshot based on the specified subvolume at the provided
+# snapshot subvolume path.
 createSubvolumeSnapshot()
 {
     # required
@@ -1512,6 +1163,7 @@ createSubvolumeSnapshot()
     return 0
 }
 
+# Delete the specified subvolume (by subvolume path) from its parent volume.
 deleteSubvolume()
 {
     # required
@@ -1523,6 +1175,80 @@ deleteSubvolume()
         && { echo "Subvolume path required" >&2 ; return 1 ; }
 
     $CMD_BTRFS subvolume delete "$subvolume_path" 1>/dev/null || return $?
+
+    return 0
+}
+
+increaseVolumeSizeToMax()
+{
+    # required
+    local volume_path
+
+    volume_path=$1
+
+    test x"$volume_path" = x \
+        && { echo "Volume path required" >&2 ; return 1 ; }
+
+    test -d "$volume_path" \
+        || { echo "Could not locate volume: $volume_path" >&2 ; return 1 ; }
+
+    $CMD_BTRFS filesystem resize max "$volume_path" 1>/dev/null \
+        || { result=$? ; echo "Could not resize volume" >&2 ; return $result ; }
+
+    return 0
+}
+
+increaseImageAndVolumeSize()
+{
+    # required
+    local volume_image_path
+    local volume_path
+    local bytes_increase
+
+    volume_image_path=$1
+    volume_path=$2
+    bytes_increase=$3
+
+    test x"$volume_image_path" = x \
+        && { echo "Volume image path required" >&2 ; return 1 ; }
+    test x"$volume_path" = x \
+        && { echo "Volume path required" >&2 ; return 1 ; }
+    test x"$bytes_increase" = x \
+        && { echo "Increase amount (in bytes) required" >&2 ; return 1 ; }
+
+    test -f "$volume_image_path" \
+        || { echo "Could not locate volume image: $volume_image_path" >&2 ; return 1 ; }
+    test -d "$volume_path" \
+        || { echo "Could not locate volume: $volume_path" >&2 ; return 1 ; }
+
+    increaseSparseImageSize "$volume_image_path" "$bytes_increase" || return $?
+
+    increaseVolumeSizeToMax "$volume_path" || return $?
+
+    return 0
+}
+
+increaseActiveImageAndVolumeSize()
+{
+    # optional
+    local bytes_increase
+
+    bytes_increase=$1
+    if test x"$bytes_increase" = x; then
+        # use default value if it is available
+        testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT \
+            && bytes_increase=$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT \
+            || { echo "Size increase (byte count) required." >&2 ; return 1 ; }
+    fi
+
+    volume_image_path=`getActiveVolumeImagePath` \
+        || { result=$? ; echo "Could not determine active volume image path" >&2 ; return $result ; }
+
+    volume_path=`getActiveVolumePath` \
+        || { result=$? ; echo "Could not determine active volume path" >&2 ; return $result ; }
+
+    increaseImageAndVolumeSize "$volume_image_path" "$volume_path" "$bytes_increase" \
+        || return $?
 
     return 0
 }

@@ -102,6 +102,7 @@ mountTmpfs "$MOUNT_ENV" || panicExit
 # create initial (temporary) mount points
 for i in \
     MOUNT_IMAGES \
+    MOUNT_VOLUMES \
     MOUNT_DEVICE \
     MOUNT_ROOT \
     MOUNT_PLATFORM \
@@ -155,7 +156,6 @@ if test x"$image_root" != x; then
 
     # if requested, copy root image to ram
     if test x"$BOOT_ROOT_TO_RAM" = x1; then
-        testVariableDefinition MOUNT_IMAGES || panicExit
         echo "Copying root image to RAM..."
         copyFileToImages "$image_root"
         sync
@@ -177,7 +177,6 @@ if test x"$image_platform" != x; then
 
     # if requested, copy platform image to ram
     if test x"$BOOT_PLATFORM_TO_RAM" = x1; then
-        testVariableDefinition MOUNT_IMAGES || panicExit
         echo "Copying platform image to RAM..."
         copyFileToImages "$image_platform"
         sync
@@ -193,9 +192,6 @@ fi
 
 
 # mount union of root and platform layers
-testVariableDefinition MOUNT_ROOT           || panicExit
-testVariableDefinition MOUNT_PLATFORM       || panicExit
-testVariableDefinition MOUNT_PLATFORM_UNION || panicExit
 mountUnion ro "$MOUNT_ROOT" "$MOUNT_PLATFORM" "$MOUNT_PLATFORM_UNION" || panicExit
 
 
@@ -208,50 +204,40 @@ if test x"$image_save" != x \
 then
 
         # remount the boot device read-write so the save image can be mounted read-write
-        testVariableDefinition MOUNT_DEVICE || panicExit
         mount -o remount,rw "$MOUNT_DEVICE" || panicExit
 
         # mount save file
-        testVariableDefinition MOUNT_SAVE || panicExit
         testVariableDefinition PLATFORM_FILESYSTEM_READWRITE || panicExit
         mountImage "$PLATFORM_FILESYSTEM_READWRITE" rw "$image_save" "$MOUNT_SAVE" || panicExit
 
-# otherwise, create an lvm store for the save data
-# and load the save file contents into ram if there is a save file
+# otherwise, create an in-memory store for the save data and load the save file
+# contents into ram (if there is a save file)
 else
 
-    testVariableDefinition MOUNT_TMP                                || panicExit
-    testVariableDefinition MOUNT_IMAGES                             || panicExit
-    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE             || panicExit
-    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT   || panicExit
-    testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE || panicExit
-    testVariableDefinition LVM_NAME_VG                              || panicExit
-    testVariableDefinition LVM_NAME_LV_SAVE                         || panicExit
-    testVariableDefinition LVM_PATH_LV_SAVE                         || panicExit
-    testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_JOURNALED  || panicExit
+    testVariableDefinition MOUNT_TMP                                     || panicExit
+    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT     || panicExit
+    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT   || panicExit
+    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE || panicExit
+    testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_JOURNALED       || panicExit
+    testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_VOLUME          || panicExit
 
 
-    # determine save data lvm storage size
-    image_lvm_save_size=$PLATFORM_IMAGE_LVM_SAVE_SIZE
+    # determine active volume storage size
+    image_volume_active_size=$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT
     if test -x"$image_save" != x -a -f "$image_save"; then
 
-
         # get device save file size
-        device_image_save_size=`getFileSize "$image_save"` \
-            || panicExit
-
+        device_image_save_size=`getFileSize "$image_save"` || panicExit
 
         # increase size by resize tolerance to allow for expansion
-        device_image_save_size=$(($device_image_save_size+$PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE)) \
+        device_image_save_size=$(($device_image_save_size+$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE)) \
             || panicExit
 
-
         # increment storage size until it can hold what's on the device
-        while test "$image_lvm_save_size" -lt "$device_image_save_size"; do
-            image_lvm_save_size=$(($image_lvm_save_size+$PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT)) \
+        while test "$image_volume_active_size" -lt "$device_image_save_size"; do
+            image_volume_active_size=$(($image_volume_active_size+$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT)) \
                 || panicExit
         done
-
 
     fi
 
@@ -266,28 +252,34 @@ else
     done
 
 
-    # create, format, and mount the lvm save store
-    image_lvm_save=`getLvmSaveImagePath` || panicExit
-    chroot "$MOUNT_TMP" dd if=/dev/zero of="$image_lvm_save" \
-        bs=1 seek="$image_lvm_save_size" count=0 1>/dev/null \
+    # create, format, and mount the active volume
+    image_volume_active=`getActiveVolumeImagePath` || panicExit
+    chroot "$MOUNT_TMP" dd if=/dev/zero of="$image_volume_active" \
+        bs=1 seek="$image_volume_active_size" count=0 1>/dev/null \
         || panicExit
-    loop_lvm_save=`losetup -f` || panicExit
-    losetup "$loop_lvm_save" "$image_lvm_save" 1>/dev/null || panicExit
-    createLvmPhysicalVolume "$loop_lvm_save" || panicExit
-    createLvmVolumeGroup "$LVM_NAME_VG" "$loop_lvm_save" || panicExit
-    block_count_lvm_save=`getLvmPhysicalExtentBlockCount "$loop_lvm_save"` || panicExit
-    createLvmLogicalVolume "$LVM_NAME_LV_SAVE" "$LVM_NAME_VG" "$block_count_lvm_save" || panicExit
-    chroot "$MOUNT_TMP" mke2fs -t $PLATFORM_FILESYSTEM_READWRITE_JOURNALED "$LVM_PATH_LV_SAVE" 1>/dev/null || panicExit
-    mount -o rw "$LVM_PATH_LV_SAVE" "$MOUNT_SAVE" || panicExit
+    chroot "$MOUNT_TMP" mkfs.btrfs "$image_volume_active" 1>/dev/null \
+        || panicExit
+    volume_active=`getActiveVolumePath` || panicExit
+    mkdir -p "$volume_active" || panicExit
+    loop_volume_active=`losetup -f` || panicExit
+    mountImage "$PLATFORM_FILESYSTEM_READWRITE_VOLUME" rw \
+        "$image_volume_active" "$volume_active" "$loop_volume_active" \
+        || panicExit
 
 
-    # if there's a save image we need to copy its content to ram (lvm)
+    # create active volume's root subvolume and bind-mount it as the save store
+    volume_active_subvolume_root=`getActiveVolumeRootSubvolumePath` \
+        || panicExit
+    btrfs subvolume create "$volume_active_subvolume_root" 1>/dev/null \
+        || panicExit
+    mount --bind "$volume_active_subvolume_root" "$MOUNT_SAVE" || panicExit
+
+
+    # if there's a save image we need to copy its content to the ram save store
     if test x"$image_save" != x \
         -a -f "$image_save"
     then
 
-        testVariableDefinition MOUNT_TMP                        || panicExit
-        testVariableDefinition MOUNT_SAVE                       || panicExit
         testVariableDefinition MOUNT_SAVE_TMP                   || panicExit
         testVariableDefinition PLATFORM_FILESYSTEM_READWRITE    || panicExit
 
@@ -305,9 +297,10 @@ else
         done
 
 
-        # copy save contents from the save file to the lvm save store
+        # copy save contents from the save file to the save store
         echo "Copying save content to RAM..."
-        chroot "$MOUNT_TMP" rsync -axHAXS "$MOUNT_SAVE_TMP/" "$MOUNT_SAVE" || panicExit
+        chroot "$MOUNT_TMP" rsync -axHAXS "$MOUNT_SAVE_TMP/" "$MOUNT_SAVE" \
+            || panicExit
         sync
         sleep 1
         save_copied_to_ram=1

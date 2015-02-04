@@ -95,10 +95,10 @@ Under the hood, Wren consists primarily of complex shell scripts, but it utilize
 
 * initramfs / BusyBox
 * OverlayFS
-* LVM
+* Btrfs
 * udev
 
-Given its place in the startup stack, `initramfs` is a requirement at present, but the other technologies are somewhat interchangeable. For example, Wren was initially designed around AUFS, but that was dropped in favor of the lighter-weight OverlayFS. It has also been considered that, given some feature overlap, ZFS or Btrfs might some day make for a better LVM replacement.
+Given its place in the startup stack, `initramfs` is a requirement at present, but the other technologies are somewhat interchangeable. For example, Wren was initially designed around AUFS and LVM, but those were dropped in favor of the lighter-weight OverlayFS and more feature-rich Btrfs.
 
 ## Bugs
 

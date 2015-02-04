@@ -30,9 +30,11 @@
 # more details.
 #
 
+
 ###
 ### CONFIG
 ###
+
 
 # clean environment
 unset IFS
@@ -80,14 +82,14 @@ EXAMPLES
 
 OPTIONS
 
-        -f,--file       File path to use as storage. This option is not normally
+        -f, --file      File path to use as storage. This option is not normally
                         required, and only exists to be explicit about the
                         following parameter being the OUTPUT_FILE path in case
                         the file name begins with a hyphen (-).
 
-        -h,--help       Print this usage information.
+        -h, --help      Print this usage information.
 
-        -s,--save       When no OUTPUT_FILE is provided, this option is used to
+        -s, --save      When no OUTPUT_FILE is provided, this option is used to
                         set the save name used to determine the path to the save
                         file on the boot media.
 
@@ -184,12 +186,6 @@ filedir=`dirname "$file"` || panicExit
 
 
 # check for required variables
-testVariableDefinition LVM_NAME_VG                          || panicExit
-testVariableDefinition LVM_NAME_LV_SNAPSHOT                 || panicExit
-testVariableDefinition LVM_NAME_MAPPER_LV_SNAPSHOT          || panicExit
-testVariableDefinition LVM_NAME_MAPPER_LV_SNAPSHOT_COW      || panicExit
-testVariableDefinition LVM_PATH_LV_SAVE                     || panicExit
-testVariableDefinition LVM_PATH_LV_SNAPSHOT                 || panicExit
 testVariableDefinition PLATFORM_FILESYSTEM_READWRITE        || panicExit
 testVariableDefinition MOUNT_SAVE                           || panicExit
 testVariableDefinition MOUNT_TMP                            || panicExit
@@ -200,6 +196,7 @@ testVariableDefinition PLATFORM_IMAGE_SAVE_SIZE_INCREMENT   || panicExit
 testVariableDefinition PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE || panicExit
 testVariableDefinition RUN_ENV_DIRECTORY                    || panicExit
 testVariableDefinition RUN_ENV_DIRECTORY_TMP                || panicExit
+
 
 ###
 ### END CONFIG
@@ -213,18 +210,15 @@ createPidFile "$pid_name" "$$" || { pid_name= ; panicExit ; }
 
 # determine whether to use a snapshot
 use_snapshot=0
-###
-### DISABLED: Snapshots with udev/overlayfs are currently broken in Ubuntu 14.04
-###
-#test -e "$LVM_PATH_LV_SAVE" \
-#    && lvm_save_image_path=`getLvmSaveImagePath` \
-#    && test -f "$lvm_save_image_path" \
-#    && lvm_snapshot_image_path=`getLvmSnapshotImagePath` \
-#    && use_snapshot=1 \
-#    || echo "Snapshot not possible - falling back to standard copy mode"
-###
-### END DISABLED
-###
+active_volume_image_path=`getActiveVolumeImagePath` \
+    && test -f "$active_volume_image_path" \
+    && active_volume_root_subvolume_path=`getActiveVolumeRootSubvolumePath` \
+    && test -d "$active_volume_root_subvolume_path" \
+    && active_volume_snapshot_subvolume_path=`getActiveVolumeSnapshotSubvolumePath` \
+    && test x"$active_volume_snapshot_subvolume_path" != x \
+    && use_snapshot=1 \
+    || echo "Snapshot not possible - falling back to standard copy mode"
+  
 
 
 # create snapshot (if possible)
@@ -234,56 +228,50 @@ if test x"$use_snapshot" = x1; then
     echo "Creating snapshot..."
 
 
-    # get size of lvm save image
-    lvm_save_image_size=`getFileSize "$lvm_save_image_path"` || panicExit
+    # get size of active volume image
+    active_volume_image_size=`getFileSize "$active_volume_image_path"` || panicExit
 
 
-    # create a snapshot image
-    test -f "$lvm_snapshot_image_path" \
-        && panicExit "Snapshot image already exists"
-    mkdir -p `dirname "$lvm_snapshot_image_path"` \
-        || panicExit "Could not create snapshot image directory"
-    dd if=/dev/zero of="$lvm_snapshot_image_path" \
-        bs=1 seek="$lvm_save_image_size" count=0 1>/dev/null \
-        || panicExit "Could not create snapshot image"
+    # create a snapshot of the active volume's root subvolume
+    active_volume_root_subvolume_path=`getActiveVolumeRootSubvolumePath` \
+        && active_volume_snapshot_subvolume_path=`getActiveVolumeSnapshotSubvolumePath` \
+        && createSubvolumeSnapshot \
+            "$active_volume_root_subvolume_path" \
+            "$active_volume_snapshot_subvolume_path" \
+        || panicExit
 
 
-    # assign snapshot image to a device loop
-    loop_lvm_snapshot=`losetup -f` || panicExit
-    loopImage "$lvm_snapshot_image_path" "$loop_lvm_snapshot"
-
-
-    # create lvm snapshot
-    createLvmPhysicalVolume "$loop_lvm_snapshot" || panicExit
-    extendLvmVolumeGroup "$LVM_NAME_VG" "$loop_lvm_snapshot" || panicExit
-    block_count_lvm_snapshot=`getLvmPhysicalExtentBlockCount "$loop_lvm_snapshot"` || panicExit
-    createLvmSnapshotLogicalVolume "$LVM_NAME_LV_SNAPSHOT" "$LVM_PATH_LV_SAVE" "$block_count_lvm_snapshot" || panicExit
-
-
-    # mount lvm snapshot
-    test -e "$LVM_PATH_LV_SNAPSHOT" \
-        || panicExit "Could not determine snapshot volume path"
+    # mount the snapshot subvolume to the standard tmp snapshot location
     mkdir -p "$MOUNT_SNAPSHOT_TMP" || panicExit
-    mount -o ro "$LVM_PATH_LV_SNAPSHOT" "$MOUNT_SNAPSHOT_TMP" || panicExit
-
+    mount --bind -o ro \
+        "$active_volume_snapshot_subvolume_path" \
+        "$MOUNT_SNAPSHOT_TMP" \
+        || panicExit
+    # readonly must be set separately for bind mounts in some kernels
+    mount -o remount,ro "$MOUNT_SNAPSHOT_TMP" || panicExit
 
 fi
 
 
-# get save data size
+# bind the save data source to a central (readonly) tmp mount
+mkdir -p "$MOUNT_TMP" || panicExit
+test x"$use_snapshot" = x1 \
+    && { mount --bind -o ro "$MOUNT_SNAPSHOT_TMP" "$MOUNT_TMP" || panicExit ; } \
+    || { mount --bind -o ro "$MOUNT_SAVE" "$MOUNT_TMP" || panicExit ; }
+# readonly must be set separately for bind mounts in some kernels
+mount -o remount,ro "$MOUNT_TMP" || panicExit
+
+
+# determine save data size
 echo "Determining save data size..."
-save_data_size=0
-if test x"$use_snapshot" = x1; then
-    save_data_size=`getDiskUsage "$MOUNT_SNAPSHOT_TMP"` || panicExit
-else
-    save_data_size=`getDiskUsage "$MOUNT_SAVE"` || panicExit
-fi
+save_data_size=`getDiskUsage "$MOUNT_TMP"` || panicExit
 
 
 # add our data tolerance to the save data size so we don't have to manually
 # include it in later calculations
 save_data_size=$(($save_data_size+$PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE)) \
     || panicExit "$save_data_size"
+
 
 # create save file (if does not exist)
 loop_save=""
@@ -397,21 +385,18 @@ mkdir -p "$MOUNT_SAVE_TMP" || panicExit
 mountImage $PLATFORM_FILESYSTEM_READWRITE rw "$file" "$MOUNT_SAVE_TMP" "$loop_save" || panicExit
 
 
-# bind the data source to a central tmp mount
-mkdir -p "$MOUNT_TMP" || panicExit
-test x"$use_snapshot" = x1 \
-    && { mount --bind "$MOUNT_SNAPSHOT_TMP" "$MOUNT_TMP" || panicExit ; } \
-    || { mount --bind "$MOUNT_SAVE" "$MOUNT_TMP" || panicExit ; }
-
-
 # copy contents
 echo "Copying save data..."
 rsync -axHAXSv --delete-excluded --delete-before \
     --exclude "$file" \
     --exclude /tmp \
     --exclude "$RUN_ENV_DIRECTORY" \
+    --exclude "$RUN_ENV_DIRECTORY_TMP" \
     "$MOUNT_TMP/" "$MOUNT_SAVE_TMP" \
     || panicExit
+
+
+echo "Cleaning up..."
 
 
 # remove central tmp mount
@@ -423,31 +408,16 @@ rmdir "$MOUNT_TMP"
 if test x"$use_snapshot" = x1; then
 
 
-    # unmount lvm snapshot
+    # unmount standard snapshot tmp location bind mount
     umount "$MOUNT_SNAPSHOT_TMP" || panicExit
     rmdir "$MOUNT_SNAPSHOT_TMP"
 
 
-    # remove lvm snapshot
-    removeLvmSnapshotLogicalVolume "$LVM_PATH_LV_SNAPSHOT" \
-        "$LVM_NAME_MAPPER_LV_SNAPSHOT" "$LVM_NAME_MAPPER_LV_SNAPSHOT_COW" \
-        || panicExit
-    reduceLvmVolumeGroup "$LVM_NAME_VG" "$loop_lvm_snapshot" || panicExit
-    removeLvmPhysicalVolume "$loop_lvm_snapshot" || panicExit
-
-
-    # free snapshot loop
-    unloopLoop "$loop_lvm_snapshot" || panicExit
-
-
-    # remove snapshot image
-    unlink "$lvm_snapshot_image_path" || panicExit
+    # delete the snapshot subvolume
+    deleteSubvolume "$active_volume_snapshot_subvolume_path" || panicExit
 
 
 fi
-
-
-echo "Cleaning up..."
 
 
 # unmount save file

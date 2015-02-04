@@ -81,8 +81,8 @@ pid_name=increase-save-size
 createPidFile "$pid_name" "$$" || { pid_name= ; panicExit ; }
 
 
-# increase save size
-increaseLvmSaveSize || panicExit
+# increase active volume size
+increaseActiveImageAndVolumeSize || panicExit
 
 
 # delete pid file
