@@ -15,6 +15,17 @@ Save data (entire machine states) can be saved on a per-user or per-project basi
 * Check out the [Usage Guide](https://github.com/trynd/wren/wiki/Usage) to learn more about Wren's packaged tools and boot options.
 * For details on performing system and kernel upgrades, see [Upgrading Your System](https://github.com/trynd/wren/wiki/Upgrading-Your-System).
 
+## Update Instructions
+
+If you're currently running Wren version 0.1.x, perform the following to upgrade your existing distribution instance.
+
+* Use wrender to build new `initrd.img-*` and `platform-*` image files and replace the existing images on the boot device in `/boot/images/` (common mount path: `/mnt/wren/00-device/boot/images/`).
+  * Custom save images should also be rebuilt and replaced.
+* Copy `conf/platform.conf` to the boot device's `/boot/conf/` directory, replacing the existing `platform.conf` instance.
+* Reboot.
+
+If you have any custom 0.1.x images in user save directories, they will continue to work with this distribution, but support for them will be removed in a future release. Those images should be individually upgraded after performing a distribution upgrade.
+
 ## Features
 
 ### Full In-Memory Mode
