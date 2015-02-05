@@ -19,7 +19,7 @@ Save data (entire machine states) can be saved on a per-user or per-project basi
 
 If you're currently running Wren version 0.1.x, perform the following to upgrade your existing distribution instance.
 
-* Use wrender to build new `initrd.img-*` and `platform-*` image files and replace the existing images on the boot device in `/boot/images/` (common mount path: `/mnt/wren/00-device/boot/images/`).
+* Use `wrender` to build new `initrd.img-*` and `platform-*` image files and replace the existing images on the boot device in `/boot/images/` (common mount path: `/mnt/wren/00-device/boot/images/`).
   * Custom save images should also be rebuilt and replaced.
 * Copy `conf/platform.conf` to the boot device's `/boot/conf/` directory, replacing the existing `platform.conf` instance.
 * Reboot.
