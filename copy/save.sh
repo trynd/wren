@@ -241,6 +241,10 @@ if test x"$use_snapshot" = x1; then
         || panicExit
 
 
+    # Ensure volume information is up to date
+    sync
+
+
     # mount the snapshot subvolume to the standard tmp snapshot location
     mkdir -p "$MOUNT_SNAPSHOT_TMP" || panicExit
     mount --bind -o ro \
