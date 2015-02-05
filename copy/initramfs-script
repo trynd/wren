@@ -262,7 +262,8 @@ else
     volume_active=`getActiveVolumePath` || panicExit
     mkdir -p "$volume_active" || panicExit
     loop_volume_active=`losetup -f` || panicExit
-    mountImage "$PLATFORM_FILESYSTEM_READWRITE_VOLUME" rw \
+    mountImage "$PLATFORM_FILESYSTEM_READWRITE_VOLUME" \
+        rw,commit=5,notreelog,nobarrier,flushoncommit \
         "$image_volume_active" "$volume_active" "$loop_volume_active" \
         || panicExit
 

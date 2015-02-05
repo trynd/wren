@@ -480,61 +480,62 @@ mountTmpfs()
 }
 
 # Loop and mount an image file of the given filesystem type for read-only (ro)
-# or read-write (rw) access at the specified mount point path. An optional
-# loop device path may be provided, otherwise it defaults to the first available
-# loop device.
+# or read-write (rw) access (and any other provided mount options) at the
+# specified mount point path. An optional loop device path may be provided,
+# otherwise it defaults to the first available loop device.
 mountImage()
 {
     # required
     local fs_type
-    local ro_rw
+    local ro_rw_options
     local image
     local mount
     # optional
     local loop
 
     fs_type=$1
-    ro_rw=$2
+    ro_rw_options=$2
     image=$3
     mount=$4
     loop=$5
 
     test x"$fs_type" = x && { echo "Filesystem type required" >&2 ; return 1 ; }
-    test x"$ro_rw" = x && { echo "Mount mode (ro/rw) required" >&2 ; return 1 ; }
+    test x"$ro_rw_options" = x && { echo "Mount mode option (ro/rw) required" >&2 ; return 1 ; }
     test x"$image" = x && { echo "Image path required" >&2 ; return 1 ; }
     test x"$mount" = x && { echo "Mount path required" >&2 ; return 1 ; }
     test x"$loop" = x && { loop=$(losetup -f) || return $? ; }
     loopImage "$image" "$loop" || return $?
-    mount -t "$fs_type" -o "$ro_rw",noatime,loop "$loop" "$mount" || return $?
+    mount -t "$fs_type" -o "$ro_rw_options",noatime,loop "$loop" "$mount" || return $?
 
     return 0
 }
 
 # Perform a union mount of a lower and upper directory path for read-only (ro)
-# or read-write (rw) access at the specified mount point path. An optional name
-# for the mount can be provided to make unmounting easier.
+# or read-write (rw) access (and any other provided mount options) at the
+# specified mount point path. An optional name for the mount can be provided to
+# make unmounting easier.
 mountUnion()
 {
     # required
-    local ro_rw
+    local ro_rw_options
     local lower
     local upper
     local mount
     # optional
     local name
 
-    ro_rw=$1
+    ro_rw_options=$1
     lower=$2
     upper=$3
     mount=$4
     name=$5
 
-    test x"$ro_rw" = x && { echo "Mount mode (ro/rw) required" >&2 ; return 1 ; }
+    test x"$ro_rw_options" = x && { echo "Mount mode option (ro/rw) required" >&2 ; return 1 ; }
     test x"$lower" = x && { echo "Lower directory path required" >&2 ; return 1 ; }
     test x"$upper" = x && { echo "Upper directory path required" >&2 ; return 1 ; }
     test x"$mount" = x && { echo "Mount path required" >&2 ; return 1 ; }
     test x"$name" = x && name=overlayfs
-    mount -t overlayfs -o "${ro_rw}",noatime,lowerdir="$lower",upperdir="$upper" "$name" "$mount" \
+    mount -t overlayfs -o "${ro_rw_options}",noatime,lowerdir="$lower",upperdir="$upper" "$name" "$mount" \
         || return $?
 
     return 0
