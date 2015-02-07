@@ -218,6 +218,7 @@ else
     testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT     || panicExit
     testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT   || panicExit
     testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE || panicExit
+    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_MOUNT_OPTIONS    || panicExit
     testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_JOURNALED       || panicExit
     testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_VOLUME          || panicExit
 
@@ -263,7 +264,7 @@ else
     mkdir -p "$volume_active" || panicExit
     loop_volume_active=`losetup -f` || panicExit
     mountImage "$PLATFORM_FILESYSTEM_READWRITE_VOLUME" \
-        rw,commit=5,notreelog,nobarrier,flushoncommit \
+        "rw,$PLATFORM_IMAGE_VOLUME_ACTIVE_MOUNT_OPTIONS" \
         "$image_volume_active" "$volume_active" "$loop_volume_active" \
         || panicExit
 
