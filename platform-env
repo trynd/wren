@@ -109,21 +109,438 @@ testRootUser()
 # Source (load and run) runtime environment config files.
 loadRunEnvConf()
 {
-    testVariableDefinition RUN_ENV_DIRECTORY_CONF || return $?
+    # optional
+    local conf_dir_path
 
     # local
     local i
     local path
 
-    for i in \
-        "device.conf" \
-        "boot.conf" \
-        "platform.conf"
-    do
-        path=$RUN_ENV_DIRECTORY_CONF/$i
-        test -f "$path" && . "$path" || return $?
-    done
+    conf_dir_path=$1
 
+    if test x"$conf_dir_path" = x; then
+        testVariableDefinition RUN_ENV_DIRECTORY_CONF || return $?
+        conf_dir_path=$RUN_ENV_DIRECTORY_CONF
+    fi
+
+    loadRunEnvDeviceConf "$conf_dir_path/device.conf"
+    loadRunEnvBootConf "$conf_dir_path/boot.conf"
+    loadRunEnvPlatformConf "$conf_dir_path/platform.conf"
+
+    return 0
+}
+
+loadRunEnvDeviceConf()
+{
+    # optional
+    local conf_file_path
+
+    # local
+    local file_found
+    local file_sourced
+    local default_device_directory_grub
+    local default_device_directory_images
+    local default_device_directory_saves
+
+    file_found=0
+    file_sourced=0
+
+    default_device_directory_grub=/boot/grub
+    default_device_directory_images=/boot/images
+    default_device_directory_saves=/boot/save
+
+    conf_file_path=$1
+
+    if test x"$conf_file_path" = x; then
+        testVariableDefinition RUN_ENV_DIRECTORY_CONF \
+            && conf_file_path=$RUN_ENV_DIRECTORY_CONF/device.conf
+    fi
+
+    DEVICE_DIRECTORY_GRUB=""
+    DEVICE_DIRECTORY_IMAGES=""
+    DEVICE_DIRECTORY_SAVES=""
+
+    if test x"$conf_file_path" = x; then
+
+        echo "Device config file not found." >&2
+
+    elif test -f "$conf_file_path"; then
+
+        file_found=1
+
+        . "$conf_file_path" && file_sourced=1
+
+        if x"$file_sourced" != x1; then
+            echo "Error loading device config file: $conf_file_path" >&2
+        fi
+
+    else
+
+        echo "Device config file not found: $conf_file_path" >&2
+
+    fi
+
+    if x"$file_found" != x1 -o x"$file_sourced" != x1; then
+
+        echo "- Using default device config values." >&2
+
+        DEVICE_DIRECTORY_GRUB="$default_device_directory_grub"
+        DEVICE_DIRECTORY_IMAGES="$default_device_directory_images"
+        DEVICE_DIRECTORY_SAVES="$default_device_directory_saves"
+
+        echo "- DEVICE_DIRECTORY_GRUB=\"$DEVICE_DIRECTORY_GRUB\"" >&2
+        echo "- DEVICE_DIRECTORY_IMAGES=\"$DEVICE_DIRECTORY_IMAGES\"" >&2
+        echo "- DEVICE_DIRECTORY_SAVES=\"$DEVICE_DIRECTORY_SAVES\"" >&2
+
+    else
+
+        testVariableDefinition DEVICE_DIRECTORY_GRUB \
+            || { DEVICE_DIRECTORY_GRUB="$default_device_directory_grub" ; echo "Using default: DEVICE_DIRECTORY_GRUB=\"$DEVICE_DIRECTORY_GRUB\"" >&2 ; }
+        testVariableDefinition DEVICE_DIRECTORY_IMAGES \
+            || { DEVICE_DIRECTORY_IMAGES="$default_device_directory_images" ; echo "Using default: DEVICE_DIRECTORY_IMAGES=\"$DEVICE_DIRECTORY_IMAGES\"" >&2 ; }
+        testVariableDefinition DEVICE_DIRECTORY_SAVES \
+            || { DEVICE_DIRECTORY_SAVES="$default_device_directory_saves" ; echo "Using default: DEVICE_DIRECTORY_SAVES=\"$DEVICE_DIRECTORY_SAVES\"" >&2 ; }
+
+    fi
+        
+    return 0
+}
+
+loadRunEnvBootConf()
+{
+    # optional
+    local conf_file_path
+
+    # local
+    local file_found
+    local file_sourced
+    local default_boot_test_mode
+    local default_boot_skip_root
+    local default_boot_skip_platform
+    local default_boot_skip_save
+    local default_boot_root_to_ram
+    local default_boot_platform_to_ram
+    local default_boot_save_to_ram
+    local default_boot_unmount
+    local default_boot_save
+    local default_boot_swap
+    local default_boot_swap_wait
+
+    file_found=0
+    file_sourced=0
+
+    default_boot_test_mode=0
+    default_boot_skip_root=0
+    default_boot_skip_platform=0
+    default_boot_skip_save=0
+    default_boot_root_to_ram=0
+    default_boot_platform_to_ram=0
+    default_boot_save_to_ram=1
+    default_boot_unmount=0
+    default_boot_save=""
+    default_boot_swap=""
+    default_boot_swap_wait=10
+
+    conf_file_path=$1
+
+    if test x"$conf_file_path" = x; then
+        testVariableDefinition RUN_ENV_DIRECTORY_CONF \
+            && conf_file_path=$RUN_ENV_DIRECTORY_CONF/device.conf
+    fi
+
+    BOOT_TEST_MODE=""
+    BOOT_SKIP_ROOT=""
+    BOOT_SKIP_PLATFORM=""
+    BOOT_SKIP_SAVE=""
+    BOOT_ROOT_TO_RAM=""
+    BOOT_PLATFORM_TO_RAM=""
+    BOOT_SAVE_TO_RAM=""
+    BOOT_UNMOUNT=""
+    BOOT_SAVE=""
+    BOOT_SWAP=""
+    BOOT_SWAP_WAIT=""
+
+    if test x"$conf_file_path" = x; then
+
+        echo "Boot config file not found." >&2
+
+    elif test -f "$conf_file_path"; then
+
+        file_found=1
+
+        . "$conf_file_path" && file_sourced=1
+
+        if x"$file_sourced" != x1; then
+            echo "Error loading boot config file: $conf_file_path" >&2
+        fi
+
+    else
+
+        echo "Boot config file not found: $conf_file_path" >&2
+
+    fi
+
+    if x"$file_found" != x1 -o x"$file_sourced" != x1; then
+
+        echo "- Using default boot config values." >&2
+
+        BOOT_TEST_MODE="$default_boot_test_mode"
+        BOOT_SKIP_ROOT="$default_boot_skip_root"
+        BOOT_SKIP_PLATFORM="$default_boot_skip_platform"
+        BOOT_SKIP_SAVE="$default_boot_skip_save"
+        BOOT_ROOT_TO_RAM="$default_boot_root_to_ram"
+        BOOT_PLATFORM_TO_RAM="$default_boot_platform_to_ram"
+        BOOT_SAVE_TO_RAM="$default_boot_save_to_ram"
+        BOOT_UNMOUNT="$default_boot_unmount"
+        BOOT_SAVE="$default_boot_save"
+        BOOT_SWAP="$default_boot_swap"
+        BOOT_SWAP_WAIT="$default_boot_swap_wait"
+
+        echo "- BOOT_TEST_MODE=\"$BOOT_TEST_MODE\"" >&2
+        echo "- BOOT_SKIP_ROOT=\"$BOOT_SKIP_ROOT\"" >&2
+        echo "- BOOT_SKIP_PLATFORM=\"$BOOT_SKIP_PLATFORM\"" >&2
+        echo "- BOOT_SKIP_SAVE=\"$BOOT_SKIP_SAVE\"" >&2
+        echo "- BOOT_ROOT_TO_RAM=\"$BOOT_ROOT_TO_RAM\"" >&2
+        echo "- BOOT_PLATFORM_TO_RAM=\"$BOOT_PLATFORM_TO_RAM\"" >&2
+        echo "- BOOT_SAVE_TO_RAM=\"$BOOT_SAVE_TO_RAM\"" >&2
+        echo "- BOOT_UNMOUNT=\"$BOOT_UNMOUNT\"" >&2
+        echo "- BOOT_SAVE=\"$BOOT_SAVE\"" >&2
+        echo "- BOOT_SWAP=\"$BOOT_SWAP\"" >&2
+        echo "- BOOT_SWAP_WAIT=\"$BOOT_SWAP_WAIT\"" >&2
+
+    else
+
+        testVariableDefinition BOOT_TEST_MODE \
+            || { BOOT_TEST_MODE="$default_boot_test_mode" ; echo "Using default: BOOT_TEST_MODE=\"$BOOT_TEST_MODE\"" >&2 ; }
+        testVariableDefinition BOOT_SKIP_ROOT \
+            || { BOOT_SKIP_ROOT="$default_boot_skip_root" ; echo "Using default: BOOT_SKIP_ROOT=\"$BOOT_SKIP_ROOT\"" >&2 ; }
+        testVariableDefinition BOOT_SKIP_PLATFORM \
+            || { BOOT_SKIP_PLATFORM="$default_boot_skip_platform" ; echo "Using default: BOOT_SKIP_PLATFORM=\"$BOOT_SKIP_PLATFORM\"" >&2 ; }
+        testVariableDefinition BOOT_SKIP_SAVE \
+            || { BOOT_SKIP_SAVE="$default_boot_skip_save" ; echo "Using default: BOOT_SKIP_SAVE=\"$BOOT_SKIP_SAVE\"" >&2 ; }
+        testVariableDefinition BOOT_ROOT_TO_RAM \
+            || { BOOT_ROOT_TO_RAM="$default_boot_root_to_ram" ; echo "Using default: BOOT_ROOT_TO_RAM=\"$BOOT_ROOT_TO_RAM\"" >&2 ; }
+        testVariableDefinition BOOT_PLATFORM_TO_RAM \
+            || { BOOT_PLATFORM_TO_RAM="$default_boot_platform_to_ram" ; echo "Using default: BOOT_PLATFORM_TO_RAM=\"$BOOT_PLATFORM_TO_RAM\"" >&2 ; }
+        testVariableDefinition BOOT_SAVE_TO_RAM \
+            || { BOOT_SAVE_TO_RAM="$default_boot_save_to_ram" ; echo "Using default: BOOT_SAVE_TO_RAM=\"$BOOT_SAVE_TO_RAM\"" >&2 ; }
+        testVariableDefinition BOOT_UNMOUNT \
+            || { BOOT_UNMOUNT="$default_boot_unmount" ; echo "Using default: BOOT_UNMOUNT=\"$BOOT_UNMOUNT\"" >&2 ; }
+        testVariableDefinition BOOT_SAVE \
+            || { BOOT_SAVE="$default_boot_save" ; echo "Using default: BOOT_SAVE=\"$BOOT_SAVE\"" >&2 ; }
+        testVariableDefinition BOOT_SWAP \
+            || { BOOT_SWAP="$default_boot_swap" ; echo "Using default: BOOT_SWAP=\"$BOOT_SWAP\"" >&2 ; }
+        testVariableDefinition BOOT_SWAP_WAIT \
+            || { BOOT_SWAP_WAIT="$default_boot_swap_wait" ; echo "Using default: BOOT_SWAP_WAIT=\"$BOOT_SWAP_WAIT\"" >&2 ; }
+
+    fi
+        
+    return 0
+}
+
+# loadRunEnvPlatformConf
+loadRunEnvPlatformConf()
+{
+    # optional
+    local conf_file_path
+
+    # local
+    local file_found
+    local file_sourced
+    local default_platform_filesystem_union
+    local default_platform_filesystem_readonly
+    local default_platform_filesystem_readwrite
+    local default_platform_filesystem_readwrite_journaled
+    local default_platform_extension_readonly
+    local default_platform_extension_readwrite
+    local default_platform_extension_readwrite_journaled
+    local default_platform_image_kernel
+    local default_platform_image_initrd
+    local default_platform_image_root
+    local default_platform_image_platform
+    local default_platform_image_save
+    local default_platform_image_lvm_save
+    local default_platform_image_lvm_snapshot
+    local default_platform_default_save
+    local default_platform_image_save_size
+    local default_platform_image_save_size_increment
+    local default_platform_image_save_resize_tolerance
+    local default_platform_image_lvm_save_size
+    local default_platform_image_lvm_save_size_increment
+    local default_platform_image_lvm_save_resize_tolerance
+
+    file_found=0
+    file_sourced=0
+
+    default_platform_filesystem_union=overlayfs
+    default_platform_filesystem_readonly=squashfs
+    default_platform_filesystem_readwrite=ext2
+    default_platform_filesystem_readwrite_journaled=ext3
+    default_platform_extension_readonly=.sfs
+    default_platform_extension_readwrite=.2fs
+    default_platform_extension_readwrite_journaled=.3fs
+    default_platform_image_kernel=vmlinuz
+    default_platform_image_initrd=initrd.img
+    default_platform_image_root=root$default_platform_extension_readonly
+    default_platform_image_platform=platform$default_platform_extension_readonly
+    default_platform_image_save=save$default_platform_extension_readwrite
+    default_platform_image_lvm_save=save.lvm
+    default_platform_image_lvm_snapshot=snapshot.lvm
+    default_platform_default_save=save
+    default_platform_image_save_size=$((1024*1024*1024))
+    default_platform_image_save_size_increment=$((1024*1024*1024))
+    default_platform_image_save_resize_tolerance=$((1024*1024*256))
+    default_platform_image_lvm_save_size=$((1024*1024*1024))
+    default_platform_image_lvm_save_size_increment=$((1024*1024*1024))
+    default_platform_image_lvm_save_resize_tolerance=$((1024*1024*512))
+
+    conf_file_path=$1
+
+    if test x"$conf_file_path" = x; then
+        testVariableDefinition RUN_ENV_DIRECTORY_CONF \
+            && conf_file_path=$RUN_ENV_DIRECTORY_CONF/platform.conf
+    fi
+
+    PLATFORM_FILESYSTEM_UNION=""
+    PLATFORM_FILESYSTEM_READONLY=""
+    PLATFORM_FILESYSTEM_READWRITE=""
+    PLATFORM_FILESYSTEM_READWRITE_JOURNALED=""
+    PLATFORM_EXTENSION_READONLY=""
+    PLATFORM_EXTENSION_READWRITE=""
+    PLATFORM_EXTENSION_READWRITE_JOURNALED=""
+    PLATFORM_IMAGE_KERNEL=""
+    PLATFORM_IMAGE_INITRD=""
+    PLATFORM_IMAGE_ROOT=""
+    PLATFORM_IMAGE_PLATFORM=""
+    PLATFORM_IMAGE_SAVE=""
+    PLATFORM_IMAGE_LVM_SAVE=""
+    PLATFORM_IMAGE_LVM_SNAPSHOT=""
+    PLATFORM_DEFAULT_SAVE=""
+    PLATFORM_IMAGE_SAVE_SIZE=""
+    PLATFORM_IMAGE_SAVE_SIZE_INCREMENT=""
+    PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE=""
+    PLATFORM_IMAGE_LVM_SAVE_SIZE=""
+    PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT=""
+    PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE=""
+
+    if test x"$conf_file_path" = x; then
+
+        echo "Platform config file not found." >&2
+
+    elif test -f "$conf_file_path"; then
+
+        file_found=1
+
+        . "$conf_file_path" && file_sourced=1
+
+        if x"$file_sourced" != x1; then
+            echo "Error loading platform config file: $conf_file_path" >&2
+        fi
+
+    else
+
+        echo "Platform config file not found: $conf_file_path" >&2
+
+    fi
+
+    if x"$file_found" != x1 -o x"$file_sourced" != x1; then
+
+        echo "- Using default platform config values." >&2
+
+        PLATFORM_FILESYSTEM_UNION="$default_platform_filesystem_union"
+        PLATFORM_FILESYSTEM_READONLY="$default_platform_filesystem_readonly"
+        PLATFORM_FILESYSTEM_READWRITE="$default_platform_filesystem_readwrite"
+        PLATFORM_FILESYSTEM_READWRITE_JOURNALED="$default_platform_filesystem_readwrite_journaled"
+        PLATFORM_EXTENSION_READONLY="$default_platform_extension_readonly"
+        PLATFORM_EXTENSION_READWRITE="$default_platform_extension_readwrite"
+        PLATFORM_EXTENSION_READWRITE_JOURNALED="$default_platform_extension_readwrite_journaled"
+        PLATFORM_IMAGE_KERNEL="$default_platform_image_kernel"
+        PLATFORM_IMAGE_INITRD="$default_platform_image_initrd"
+        PLATFORM_IMAGE_ROOT="$default_platform_image_root"
+        PLATFORM_IMAGE_PLATFORM="$default_platform_image_platform"
+        PLATFORM_IMAGE_SAVE="$default_platform_image_save"
+        PLATFORM_IMAGE_LVM_SAVE="$default_platform_image_lvm_save"
+        PLATFORM_IMAGE_LVM_SNAPSHOT="$default_platform_image_lvm_snapshot"
+        PLATFORM_DEFAULT_SAVE="$default_platform_default_save"
+        PLATFORM_IMAGE_SAVE_SIZE="$default_platform_image_save_size"
+        PLATFORM_IMAGE_SAVE_SIZE_INCREMENT="$default_platform_image_save_size_increment"
+        PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE="$default_platform_image_save_resize_tolerance"
+        PLATFORM_IMAGE_LVM_SAVE_SIZE="$default_platform_image_lvm_save_size"
+        PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT="$default_platform_image_lvm_save_size_increment"
+        PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE="$default_platform_image_lvm_save_resize_tolerance"
+
+
+        echo "- PLATFORM_FILESYSTEM_UNION=\"$PLATFORM_FILESYSTEM_UNION\"" >&2
+        echo "- PLATFORM_FILESYSTEM_READONLY=\"$PLATFORM_FILESYSTEM_READONLY\"" >&2
+        echo "- PLATFORM_FILESYSTEM_READWRITE=\"$PLATFORM_FILESYSTEM_READWRITE\"" >&2
+        echo "- PLATFORM_FILESYSTEM_READWRITE_JOURNALED=\"$PLATFORM_FILESYSTEM_READWRITE_JOURNALED\"" >&2
+        echo "- PLATFORM_EXTENSION_READONLY=\"$PLATFORM_EXTENSION_READONLY\"" >&2
+        echo "- PLATFORM_EXTENSION_READWRITE=\"$PLATFORM_EXTENSION_READWRITE\"" >&2
+        echo "- PLATFORM_EXTENSION_READWRITE_JOURNALED=\"$PLATFORM_EXTENSION_READWRITE_JOURNALED\"" >&2
+        echo "- PLATFORM_IMAGE_KERNEL=\"$PLATFORM_IMAGE_KERNEL\"" >&2
+        echo "- PLATFORM_IMAGE_INITRD=\"$PLATFORM_IMAGE_INITRD\"" >&2
+        echo "- PLATFORM_IMAGE_ROOT=\"$PLATFORM_IMAGE_ROOT\"" >&2
+        echo "- PLATFORM_IMAGE_PLATFORM=\"$PLATFORM_IMAGE_PLATFORM\"" >&2
+        echo "- PLATFORM_IMAGE_SAVE=\"$PLATFORM_IMAGE_SAVE\"" >&2
+        echo "- PLATFORM_IMAGE_LVM_SAVE=\"$PLATFORM_IMAGE_LVM_SAVE\"" >&2
+        echo "- PLATFORM_IMAGE_LVM_SNAPSHOT=\"$PLATFORM_IMAGE_LVM_SNAPSHOT\"" >&2
+        echo "- PLATFORM_DEFAULT_SAVE=\"$PLATFORM_DEFAULT_SAVE\"" >&2
+        echo "- PLATFORM_IMAGE_SAVE_SIZE=\"$PLATFORM_IMAGE_SAVE_SIZE\"" >&2
+        echo "- PLATFORM_IMAGE_SAVE_SIZE_INCREMENT=\"$PLATFORM_IMAGE_SAVE_SIZE_INCREMENT\"" >&2
+        echo "- PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE=\"$PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE\"" >&2
+        echo "- PLATFORM_IMAGE_LVM_SAVE_SIZE=\"$PLATFORM_IMAGE_LVM_SAVE_SIZE\"" >&2
+        echo "- PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT=\"$PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT\"" >&2
+        echo "- PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE=\"$PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE\"" >&2
+
+    else
+
+        testVariableDefinition PLATFORM_FILESYSTEM_UNION \
+            || { PLATFORM_FILESYSTEM_UNION="$default_platform_filesystem_union" ; echo "Using default: PLATFORM_FILESYSTEM_UNION=\"$PLATFORM_FILESYSTEM_UNION\"" >&2 ; }
+        testVariableDefinition PLATFORM_FILESYSTEM_READONLY \
+            || { PLATFORM_FILESYSTEM_READONLY="$default_platform_filesystem_readonly" ; echo "Using default: PLATFORM_FILESYSTEM_READONLY=\"$PLATFORM_FILESYSTEM_READONLY\"" >&2 ; }
+        testVariableDefinition PLATFORM_FILESYSTEM_READWRITE \
+            || { PLATFORM_FILESYSTEM_READWRITE="$default_platform_filesystem_readwrite" ; echo "Using default: PLATFORM_FILESYSTEM_READWRITE=\"$PLATFORM_FILESYSTEM_READWRITE\"" >&2 ; }
+        testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_JOURNALED \
+            || { PLATFORM_FILESYSTEM_READWRITE_JOURNALED="$default_platform_filesystem_readwrite_journaled" ; echo "Using default: PLATFORM_FILESYSTEM_READWRITE_JOURNALED=\"$PLATFORM_FILESYSTEM_READWRITE_JOURNALED\"" >&2 ; }
+        testVariableDefinition PLATFORM_EXTENSION_READONLY \
+            || { PLATFORM_EXTENSION_READONLY="$default_platform_extension_readonly" ; echo "Using default: PLATFORM_EXTENSION_READONLY=\"$PLATFORM_EXTENSION_READONLY\"" >&2 ; }
+        testVariableDefinition PLATFORM_EXTENSION_READWRITE \
+            || { PLATFORM_EXTENSION_READWRITE="$default_platform_extension_readwrite" ; echo "Using default: PLATFORM_EXTENSION_READWRITE=\"$PLATFORM_EXTENSION_READWRITE\"" >&2 ; }
+        testVariableDefinition PLATFORM_EXTENSION_READWRITE_JOURNALED \
+            || { PLATFORM_EXTENSION_READWRITE_JOURNALED="$default_platform_extension_readwrite_journaled" ; echo "Using default: PLATFORM_EXTENSION_READWRITE_JOURNALED=\"$PLATFORM_EXTENSION_READWRITE_JOURNALED\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_KERNEL \
+            || { PLATFORM_IMAGE_KERNEL="$default_platform_image_kernel" ; echo "Using default: PLATFORM_IMAGE_KERNEL=\"$PLATFORM_IMAGE_KERNEL\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_INITRD \
+            || { PLATFORM_IMAGE_INITRD="$default_platform_image_initrd" ; echo "Using default: PLATFORM_IMAGE_INITRD=\"$PLATFORM_IMAGE_INITRD\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_LVM_SAVE \
+            || { PLATFORM_IMAGE_LVM_SAVE="$default_platform_image_lvm_save" ; echo "Using default: PLATFORM_IMAGE_LVM_SAVE=\"$PLATFORM_IMAGE_LVM_SAVE\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_LVM_SNAPSHOT \
+            || { PLATFORM_IMAGE_LVM_SNAPSHOT="$default_platform_image_lvm_snapshot" ; echo "Using default: PLATFORM_IMAGE_LVM_SNAPSHOT=\"$PLATFORM_IMAGE_LVM_SNAPSHOT\"" >&2 ; }
+        testVariableDefinition PLATFORM_DEFAULT_SAVE \
+            || { PLATFORM_DEFAULT_SAVE="$default_platform_default_save" ; echo "Using default: PLATFORM_DEFAULT_SAVE=\"$PLATFORM_DEFAULT_SAVE\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_SAVE_SIZE \
+            || { PLATFORM_IMAGE_SAVE_SIZE="$default_platform_image_save_size" ; echo "Using default: PLATFORM_IMAGE_SAVE_SIZE=\"$PLATFORM_IMAGE_SAVE_SIZE\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_SAVE_SIZE_INCREMENT \
+            || { PLATFORM_IMAGE_SAVE_SIZE_INCREMENT="$default_platform_image_save_size_increment" ; echo "Using default: PLATFORM_IMAGE_SAVE_SIZE_INCREMENT=\"$PLATFORM_IMAGE_SAVE_SIZE_INCREMENT\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE \
+            || { PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE="$default_platform_image_save_resize_tolerance" ; echo "Using default: PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE=\"$PLATFORM_IMAGE_SAVE_RESIZE_TOLERANCE\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE \
+            || { PLATFORM_IMAGE_LVM_SAVE_SIZE="$default_platform_image_lvm_save_size" ; echo "Using default: PLATFORM_IMAGE_LVM_SAVE_SIZE=\"$PLATFORM_IMAGE_LVM_SAVE_SIZE\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT \
+            || { PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT="$default_platform_image_lvm_save_size_increment" ; echo "Using default: PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT=\"$PLATFORM_IMAGE_LVM_SAVE_SIZE_INCREMENT\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE \
+            || { PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE="$default_platform_image_lvm_save_resize_tolerance" ; echo "Using default: PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE=\"$PLATFORM_IMAGE_LVM_SAVE_RESIZE_TOLERANCE\"" >&2 ; }
+
+        # special case compound variables
+        testVariableDefinition PLATFORM_IMAGE_ROOT \
+            || { PLATFORM_IMAGE_ROOT="root$PLATFORM_EXTENSION_READONLY" ; echo "Using default: PLATFORM_IMAGE_ROOT=\"$PLATFORM_IMAGE_ROOT\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_PLATFORM \
+            || { PLATFORM_IMAGE_PLATFORM="platform$PLATFORM_EXTENSION_READONLY" ; echo "Using default: PLATFORM_IMAGE_PLATFORM=\"$PLATFORM_IMAGE_PLATFORM\"" >&2 ; }
+        testVariableDefinition PLATFORM_IMAGE_SAVE \
+            || { PLATFORM_IMAGE_SAVE="save$PLATFORM_EXTENSION_READWRITE" ; echo "Using default: PLATFORM_IMAGE_SAVE=\"$PLATFORM_IMAGE_SAVE\"" >&2 ; }
+
+    fi
+        
     return 0
 }
 
