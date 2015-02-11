@@ -1,0 +1,185 @@
+#!/bin/sh
+#
+# NAME
+#
+#   wren
+#
+# DESCRIPTION
+#
+#   Control script for public back end functionality.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+###
+### CONFIG
+###
+
+# clean environment
+unset IFS
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# ensure platform name is defined
+test x"$RUN_ENV_PLATFORM_NAME" = x \
+    && { echo "Could not determine platform environment name - exiting..." >&2 ; exit 1 ; }
+
+# load platform environment
+platform_dir=/etc/$RUN_ENV_PLATFORM_NAME
+. "$platform_dir/platform-env" \
+    || { echo "Could not load platform environment - exiting..." >&2 ; exit 1 ; }
+
+# local functions
+panicExit()
+{
+    test x"$1" = x \
+        && echo "An error occurred - exiting..." >&2 \
+        || echo "$1 - exiting..." >&2
+
+    exit 1
+}
+
+# ensure root permissions
+testRootUser || panicExit "Root permissions (or sudo) required"
+
+# load boot configurations and options
+loadRunEnvConf || panicExit
+updateBootOptions || panicExit
+
+CMD_SAVE="echo $platform_dir/save.sh"
+CMD_INCREASE_SAVE_SIZE="echo $platform_dir/increase-save-size.sh"
+CMD_UPDATE_GRUB="echo $platform_dir/update-grub.sh"
+
+# Load control environment variables
+testVariableDefinition RUN_ENV_DIRECTORY || panicExit
+env_file=$RUN_ENV_DIRECTORY/env_control
+SAVENAME=""
+SAVEFILE=""
+test -f "$env_file" && . "$env_file"
+
+# parse options
+command="$1"
+case "$command" in
+
+    list )      option="$2"
+                all=0
+                if test -n "$option"; then
+                    case "$option" in
+                        all )   all=1 ;;
+                        * )     panicExit "Unknown \"list\" option: $option" ;;
+                    esac
+                fi
+                test x"$all" = x1 -o -n "$SAVENAME" && echo "savename=$SAVENAME"
+                test x"$all" = x1 -o -n "$SAVEFILE" && echo "savefile=$SAVEFILE"
+                ;;
+
+    get )       option="$2"
+                case "$option" in
+                    savename )  echo "$SAVENAME" ;;
+                    savefile )  echo "$SAVEFILE" ;;
+                    * )         panicExit "Unknown \"get\" option: $option"
+                esac
+                ;;
+
+    set )       option="$2"
+                case "$option" in
+                    savename=* )    value=${option#savename=}
+                                    option=savename
+                                    ;;
+                    savefile=* )    value=${option#savefile=}
+                                    option=savefile
+                                    ;;
+                    savename | \
+                    savefile )      value="$3"
+                                    ;;
+                    * )             panicExit "Unknown \"set\" option: $option" ;;
+                esac
+                if test -n "$value"; then
+                    case "$option" in
+                        savename )  SAVENAME="$value"
+                                    SAVEFILE=""
+                                    ;;
+                        savefile )  SAVEFILE="$value"
+                                    SAVENAME=""
+                                    ;;
+                        * )         panicExit "Unknown \"set\" option: $option" ;;
+                    esac
+                else
+                    panicExit "Option \"set\" requires an option and a value"
+                fi
+                ;;
+                
+    unset )     option="$2"
+                case "$option" in
+                    savename )  SAVENAME="" ;;
+                    savefile )  SAVEFILE="" ;;
+                    * )         panicExit "Unknown \"unset\" option: $option" ;;
+                esac
+                ;;
+                
+    save )      savename=""
+                savefile=""
+                option="$2"
+                if test -n "$option"; then
+                    case "$option" in
+                        savename=* )    savename="${option#savename=}" ;;
+                        savefile=* )    savefile="${option#savefile=}" ;;
+                        * )             panicExit "Unknown \"save\" option: $option"
+                    esac
+                else
+                    if test -n "$SAVENAME"; then
+                        savename="$SAVENAME"
+                    elif test -n "$SAVEFILE"; then
+                        savefile="$SAVEFILE"
+                    else
+                        if test -n "$BOOT_SAVE"; then
+                            savename="$BOOT_SAVE"
+                            echo "Using boot-time save name: $savename"
+                        elif test -n "$PLATFORM_DEFAULT_SAVE"; then
+                            savename="$PLATFORM_DEFAULT_SAVE"
+                            echo "Using platform-default save name: $savename "
+                        fi
+                    fi
+                fi
+                if test -n "$savename"; then
+                    $CMD_SAVE -s "$savename" || panicExit
+                elif test -n "$savefile"; then
+                    $CMD_SAVE -f "$savefile" || panicExit
+                else
+                    panicExit "Option \"save\" requires a valid \"savename\" or \"savefile\" value"
+                fi
+                ;;
+
+    +active )   $CMD_INCREASE_SAVE_SIZE ;;
+
+    * )         panicExit "Unknown option: $command" ;;
+
+esac
+
+# Store control environment variables
+env_content="### AUTOGENERATED
+### DO NOT EDIT
+
+SAVENAME=\"$SAVENAME\"
+SAVEFILE=\"$SAVEFILE\"
+"
+mkdir -p "$(dirname "$env_file")"
+echo "$env_content" >"$env_file"
