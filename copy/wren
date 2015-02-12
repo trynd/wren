@@ -6,7 +6,7 @@
 #
 # DESCRIPTION
 #
-#   Control script for public back end functionality.
+#   Control script for public-facing platform functionality.
 #
 # AUTHOR
 #
@@ -64,6 +64,15 @@ testRootUser || panicExit "Root permissions (or sudo) required"
 loadRunEnvConf || panicExit
 updateBootOptions || panicExit
 
+# script paths
+CMD_SAVE="echo $platform_dir/save.sh"
+CMD_INCREASE_SAVE_SIZE="echo $platform_dir/increase-save-size.sh"
+CMD_UPDATE_GRUB=$platform_dir/update-grub.sh
+
+# Other paths
+testVariableDefinition MOUNT_DEVICE || panicExit
+PATH_GRUB_CONFIG=$MOUNT_DEVICE/boot/grub/grub.cfg
+
 # load environment variables
 testVariableDefinition RUN_ENV_DIRECTORY || panicExit
 env_file=$RUN_ENV_DIRECTORY/env_control
@@ -83,10 +92,6 @@ SAVEFILE=\"$SAVEFILE\""
     echo "$env_content" >"$env_file" || return $?
     return 0
 }
-
-CMD_SAVE="echo $platform_dir/save.sh"
-CMD_INCREASE_SAVE_SIZE="echo $platform_dir/increase-save-size.sh"
-CMD_UPDATE_GRUB="echo $platform_dir/update-grub.sh"
 
 # parse options
 command="$1"
@@ -157,7 +162,7 @@ case "$command" in
                     case "$option" in
                         savename=* )    savename="${option#savename=}" ;;
                         savefile=* )    savefile="${option#savefile=}" ;;
-                        * )             panicExit "Unknown \"save\" option: $option"
+                        * )             panicExit "Unknown \"save\" option: $option" ;;
                     esac
                 else
                     if test -n "$SAVENAME"; then
@@ -184,6 +189,44 @@ case "$command" in
                 ;;
 
     +active )   $CMD_INCREASE_SAVE_SIZE ;;
+
+    grub )      option="$2"
+                case "$option" in
+                    show )      test -f "$PATH_GRUB_CONFIG" \
+                                    || panicExit "Could not locate file: $PATH_GRUB_CONFIG"
+                                cat "$PATH_GRUB_CONFIG" \
+                                    || panicExit
+                                ;;
+                    generate )  $CMD_UPDATE_GRUB
+                                ;;
+                    write )     modifier="$3"
+                                test "$modifier" = '-v' \
+                                    && echo "Verifying Grub configuration directory..."
+                                dir_grub_config=$(dirname "$PATH_GRUB_CONFIG") \
+                                    && test -d "$dir_grub_config" \
+                                    || panicExit "Grub configuration directory not found"
+                                test "$modifier" = '-v' \
+                                    && echo "Generating updated Grub configuration..."
+                                updated_grub_config=$($CMD_UPDATE_GRUB) \
+                                    || panicExit
+                                if test -f "$PATH_GRUB_CONFIG"; then
+                                    test "$modifier" = '-v' \
+                                        && echo "Backing up current Grub configuration..."
+                                    cp "$PATH_GRUB_CONFIG" "$PATH_GRUB_CONFIG~" \
+                                        || panicExit
+                                fi
+                                test "$modifier" = '-v' \
+                                    && echo "Writing Grub configuration..."
+                                echo "--stub--"
+                                #echo "$updated_grub_config" >"$PATH_GRUB_CONFIG" \
+                                #   || panicExit
+                                test "$modifier" = '-v' \
+                                    && echo "Done."
+                                ;;
+                    * )         panicExit "Unknown \"grub\" option: $option"
+                                ;;
+                esac
+                ;;
 
     * )         panicExit "Unknown option: $command" ;;
 
