@@ -157,26 +157,50 @@ case "$command" in
 
     status )    option="$2"
 
+                # check for invalid options
                 case "$option" in
-                    '' | all | device | savename | savefile | savenames ) ;;
+                    '' | all | platform | device | savename | savefile | savenames ) ;;
                     * ) panicExit "Unknown \"status\" option: $option" ;;
                 esac
 
+                # determine if device is mounted
+                case "$option" in '' | all | device | savename | savefile | savenames )
+                    testVariableDefinition MOUNT_DEVICE \
+                        || panicExit
+                    testIsMounted "$MOUNT_DEVICE" \
+                        && device_mounted=1 \
+                        || device_mounted=0
+                esac
+
+                # platform
+                case "$option" in platform | all | '' )
+                    testVariableDefinition RUN_ENV_PLATFORM_NAME || panicExit
+                    testVariableDefinition RUN_ENV_PLATFORM_VERSION || panicExit
+                    testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME || panicExit
+                    test -z "$option" -o "$option" = all && printf 'platform: '
+                    echo "$RUN_ENV_PLATFORM_DISPLAY_NAME ($RUN_ENV_PLATFORM_NAME-$RUN_ENV_PLATFORM_VERSION)"
+                esac
+
+                # device
                 case "$option" in device | all | '' )
                     testVariableDefinition MOUNT_DEVICE \
                         || panicExit
-                    device=$(cat /proc/mounts | grep "\S\+\s\+$MOUNT_DEVICE\s" | cut -d ' ' -f 1)
-                    if test -n "$device"; then
-                        device=$(readlink -m "$device") || panicExit
-                        echo "device: $device"
+                    device=$(cat /proc/mounts | grep "\S\+\s\+$MOUNT_DEVICE\s" | cut -d ' ' -f 1) \
+                        || panicExit
+                    if test "$device_mounted" = 0 -o -z "$device"; then
+                        test -z "$option" -o "$option" = all && printf 'device: '
+                        echo "<not mounted>"
                     else
-                        echo "device: <not mounted>"
+                        device=$(readlink -m "$device") || panicExit
+                        test -z "$option" -o "$option" = all && printf 'device: '
+                        echo "$device"
                     fi
                 esac
 
+                # savename
                 case "$option" in savename | all | '' )
-                    test -z "$option" -o "$option" = all && printf 'savename: '
-                    if test -z "$SAVEFILE"; then
+                    if test "$device_mounted" = 1 -a -z "$SAVEFILE"; then
+                        test -z "$option" -o "$option" = all && printf 'savename: '
                         if test -n "$SAVENAME"; then
                             echo "$SAVENAME"
                         elif test -n "$BOOT_SAVE"; then
@@ -187,34 +211,41 @@ case "$command" in
                     fi
                 esac
 
+                # savefile
                 case "$option" in savefile | all | '' )
-                    test -z "$option" -o "$option" = all && printf 'savefile: '
                     if test -n "$SAVEFILE"; then
+                        test -z "$option" -o "$option" = all && printf 'savefile: '
                         echo "$SAVEFILE"
-                    elif test -n "$SAVENAME"; then
-                        echo "$(getSaveImagePath "$SAVENAME")" \
-                            || panicExit
-                    else
-                        echo "$(getSaveImagePath)" \
-                            || panicExit
+                    elif test "$device_mounted" = 1; then
+                        test -z "$option" -o "$option" = all && printf 'savefile: '
+                        if test -n "$SAVENAME"; then
+                            echo "$(getSaveImagePath "$SAVENAME")" \
+                                || panicExit
+                        else
+                            echo "$(getSaveImagePath)" \
+                                || panicExit
+                        fi
                     fi
                 esac
 
+                # savenames
                 case "$option" in savenames | all | '' )
-                    test -z "$option" -o "$option" = all && echo 'savenames:'
-                    dir_saves=$(getDeviceSavesDirectoryPath) \
-                        || panicExit
-                    if test -n "$dir_saves" -a -d "$dir_saves"; then
-                        saves=$(getAbsoluteDirectoryList "$dir_saves") \
+                    if test "$device_mounted" = 1; then
+                        dir_saves=$(getDeviceSavesDirectoryPath) \
                             || panicExit
-                        echo "$saves" | while IFS= read -r i; do
-                            if test -d "$i"; then
-                                savename=$(basename "$i") \
-                                    || panicExit
-                                test -z "$option" -o "$option" = all && printf '  '
-                                echo "$savename"
-                            fi
-                        done
+                        if test -n "$dir_saves" -a -d "$dir_saves"; then
+                            saves=$(getAbsoluteDirectoryList "$dir_saves") \
+                                || panicExit
+                            test -z "$option" -o "$option" = all && echo 'savenames:'
+                            echo "$saves" | while IFS= read -r i; do
+                                if test -d "$i"; then
+                                    savename=$(basename "$i") \
+                                        || panicExit
+                                    test -z "$option" -o "$option" = all && printf '  '
+                                    echo "$savename"
+                                fi
+                            done
+                        fi
                     fi
                 esac
                 ;;
