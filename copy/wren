@@ -154,6 +154,70 @@ case "$command" in
                     * )         panicExit "Unknown \"unset\" option: $option" ;;
                 esac
                 ;;
+
+    status )    option="$2"
+
+                case "$option" in
+                    '' | all | device | savename | savefile | savenames ) ;;
+                    * ) panicExit "Unknown \"status\" option: $option" ;;
+                esac
+
+                case "$option" in device | all | '' )
+                    testVariableDefinition MOUNT_DEVICE \
+                        || panicExit
+                    device=$(cat /proc/mounts | grep "\S\+\s\+$MOUNT_DEVICE\s" | cut -d ' ' -f 1)
+                    if test -n "$device"; then
+                        device=$(readlink -m "$device") || panicExit
+                        echo "device: $device"
+                    else
+                        echo "device: <not mounted>"
+                    fi
+                esac
+
+                case "$option" in savename | all | '' )
+                    test -z "$option" -o "$option" = all && printf 'savename: '
+                    if test -z "$SAVEFILE"; then
+                        if test -n "$SAVENAME"; then
+                            echo "$SAVENAME"
+                        elif test -n "$BOOT_SAVE"; then
+                            echo "$BOOT_SAVE"
+                        elif test -n "$PLATFORM_DEFAULT_SAVE"; then
+                            echo "$PLATFORM_DEFAULT_SAVE"
+                        fi
+                    fi
+                esac
+
+                case "$option" in savefile | all | '' )
+                    test -z "$option" -o "$option" = all && printf 'savefile: '
+                    if test -n "$SAVEFILE"; then
+                        echo "$SAVEFILE"
+                    elif test -n "$SAVENAME"; then
+                        echo "$(getSaveImagePath "$SAVENAME")" \
+                            || panicExit
+                    else
+                        echo "$(getSaveImagePath)" \
+                            || panicExit
+                    fi
+                esac
+
+                case "$option" in savenames | all | '' )
+                    test -z "$option" -o "$option" = all && echo 'savenames:'
+                    dir_saves=$(getDeviceSavesDirectoryPath) \
+                        || panicExit
+                    if test -n "$dir_saves" -a -d "$dir_saves"; then
+                        saves=$(getAbsoluteDirectoryList "$dir_saves") \
+                            || panicExit
+                        echo "$saves" | while IFS= read -r i; do
+                            if test -d "$i"; then
+                                savename=$(basename "$i") \
+                                    || panicExit
+                                test -z "$option" -o "$option" = all && printf '  '
+                                echo "$savename"
+                            fi
+                        done
+                    fi
+                esac
+                ;;
                 
     save )      savename=""
                 savefile=""
