@@ -566,7 +566,7 @@ case "$command" in
                 esac
                 ;;
 
-    '' )        panicExit "Command option required" ;;
+    '' )        printUsage 1 ;;
 
     * )         panicExit "Unknown option: $command" ;;
 
