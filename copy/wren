@@ -65,8 +65,8 @@ loadRunEnvConf || panicExit
 updateBootOptions || panicExit
 
 # script paths
-CMD_SAVE="echo $platform_dir/save.sh"
-CMD_INCREASE_SAVE_SIZE="echo $platform_dir/increase-save-size.sh"
+CMD_SAVE=$platform_dir/save.sh
+CMD_INCREASE_SAVE_SIZE=$platform_dir/increase-save-size.sh
 CMD_UPDATE_GRUB=$platform_dir/update-grub.sh
 
 # Other paths
@@ -281,9 +281,8 @@ case "$command" in
                                 fi
                                 test "$modifier" = '-v' \
                                     && echo "Writing Grub configuration..."
-                                echo "--stub--"
-                                #echo "$updated_grub_config" >"$PATH_GRUB_CONFIG" \
-                                #   || panicExit
+                                echo "$updated_grub_config" >"$PATH_GRUB_CONFIG" \
+                                    || panicExit
                                 test "$modifier" = '-v' \
                                     && echo "Done."
                                 ;;
