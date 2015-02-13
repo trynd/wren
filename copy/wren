@@ -172,6 +172,11 @@ case "$command" in
                         || device_mounted=0
                 esac
 
+                # add newline for "all"
+                case "$option" in '' | all )
+                    echo
+                esac
+
                 # platform
                 case "$option" in platform | all | '' )
                     testVariableDefinition RUN_ENV_PLATFORM_NAME || panicExit
@@ -251,6 +256,11 @@ case "$command" in
                             done
                         fi
                     fi
+                esac
+
+                # add newline for "all"
+                case "$option" in '' | all )
+                    echo
                 esac
                 ;;
                 
