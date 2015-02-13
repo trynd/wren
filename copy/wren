@@ -57,6 +57,125 @@ panicExit()
     exit 1
 }
 
+# usage information
+testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME || panicExit
+APP_NAME=$(basename "$0")
+APP_USAGE="
+NAME
+
+    $APP_NAME
+
+DESCRIPTION
+
+    $RUN_ENV_PLATFORM_DISPLAY_NAME platform management utility.
+
+    This application requires root (or sudo) permissions.
+
+SYNOPSIS
+
+    $APP_NAME <-h|--help>
+    $APP_NAME <COMMAND> [SUBCOMMAND|OPTION] [-v]
+
+    $APP_NAME +active
+    $APP_NAME get <variable>
+    $APP_NAME grub <generate|show|write [-v]>
+    $APP_NAME list [all]
+    $APP_NAME save [savename=<save_name>|savefile=</path/to/file>] [-v]
+    $APP_NAME set <variable> <value>
+    $APP_NAME status [all|device|platform|savefile|savename|savenames]
+    $APP_NAME unset <variable>
+
+OPTIONS
+
+    -h,--help   Display this usage information and exit.
+
+    +active     Allot additional RAM to increase the active storage
+                capacity.
+
+    get         Retrieve a stored variable value. Requires a variable name.
+
+    grub        Perform a Grub configuration SUBCOMMAND.
+    
+                Requires one SUBCOMMAND from the following:
+
+                    generate    Display a new Grub configuration to standard
+                                output (based on saves from the mounted boot
+                                device).
+
+                    show        Display the current Grub configuration used
+                                by the mounted boot device.
+
+                    write       Write a new Grub configuration to the
+                                mounted boot device (based on saves from the
+                                mounted boot device).
+
+                Accepts the \"-v\" modifier for more verbose output when
+                using the \"write\" SUBCOMMAND.
+
+    list        Display stored variables and their values.
+    
+                Used primarily for debugging purposes.
+    
+                Accepts one SUBCOMMAND from the following:
+
+                    all         Display all known variables, even if they
+                                are not set or stored.
+
+    save        Save to disk (or a target save file).
+    
+                Accepts one OPTION in the following format:
+                
+                    save savename=\"name_of_save_on_disk\"
+                    save savefile=\"/path/to/save/file\"
+                    
+                If no OPTION is provided, set variables or system defaults
+                will be used.
+
+                Accepts the \"-v\" modifier for more verbose output.
+
+    set         Store a variable for later use. Requires a variable and
+                value in either of the following formats:
+
+                    set variable value
+                    set variable=value
+
+                Accepted variables are:
+
+                    savefile, savename
+
+    status      Report on current platform state and expected paths/values.
+                Accepts an optional SUBCOMMAND to retrieve a specific state.
+                
+                Accepted SUBCOMMAND values are:
+
+                    all         Display all states (default).
+
+                    device      Show mounted boot device path (if mounted).
+
+                    platform    Show platform name and version.
+
+                    savefile    Show path to save image if \"save\" is
+                                called without additional parameters.
+
+                    savename    Show device save name that will be used if
+                                \"save\" is called without additional
+                                parameters.
+
+                    savenames   Show existing save names from the mounted
+                                boot device (if mounted).
+
+    unset       Unassign and remove a stored variable. Requires a variable
+                name.
+"
+printUsage()
+{
+    echo "$APP_USAGE"
+    test x"$1" = x || exit $1
+}
+case "$1" in -h | --help )
+    printUsage 0
+esac
+
 # ensure root permissions
 testRootUser || panicExit "Root permissions (or sudo) required"
 
@@ -105,7 +224,7 @@ option="$2"
 case "$command" in
 
     #
-    # list - show stored variables and their values
+    # list - display stored variables and their values
     #
     list )      # test for allowed options
                 if test -n "$option"; then
