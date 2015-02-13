@@ -177,7 +177,7 @@ case "$command" in
                     testVariableDefinition RUN_ENV_PLATFORM_NAME || panicExit
                     testVariableDefinition RUN_ENV_PLATFORM_VERSION || panicExit
                     testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME || panicExit
-                    test -z "$option" -o "$option" = all && printf 'platform: '
+                    test -z "$option" -o "$option" = all && printf 'platform:  '
                     echo "$RUN_ENV_PLATFORM_DISPLAY_NAME ($RUN_ENV_PLATFORM_NAME-$RUN_ENV_PLATFORM_VERSION)"
                 esac
 
@@ -188,11 +188,11 @@ case "$command" in
                     device=$(cat /proc/mounts | grep "\S\+\s\+$MOUNT_DEVICE\s" | cut -d ' ' -f 1) \
                         || panicExit
                     if test "$device_mounted" = 0 -o -z "$device"; then
-                        test -z "$option" -o "$option" = all && printf 'device: '
+                        test -z "$option" -o "$option" = all && printf 'device:    '
                         echo "<not mounted>"
                     else
                         device=$(readlink -m "$device") || panicExit
-                        test -z "$option" -o "$option" = all && printf 'device: '
+                        test -z "$option" -o "$option" = all && printf 'device:    '
                         echo "$device"
                     fi
                 esac
@@ -200,7 +200,7 @@ case "$command" in
                 # savename
                 case "$option" in savename | all | '' )
                     if test "$device_mounted" = 1 -a -z "$SAVEFILE"; then
-                        test -z "$option" -o "$option" = all && printf 'savename: '
+                        test -z "$option" -o "$option" = all && printf 'savename:  '
                         if test -n "$SAVENAME"; then
                             echo "$SAVENAME"
                         elif test -n "$BOOT_SAVE"; then
@@ -214,10 +214,10 @@ case "$command" in
                 # savefile
                 case "$option" in savefile | all | '' )
                     if test -n "$SAVEFILE"; then
-                        test -z "$option" -o "$option" = all && printf 'savefile: '
+                        test -z "$option" -o "$option" = all && printf 'savefile:  '
                         echo "$SAVEFILE"
                     elif test "$device_mounted" = 1; then
-                        test -z "$option" -o "$option" = all && printf 'savefile: '
+                        test -z "$option" -o "$option" = all && printf 'savefile:  '
                         if test -n "$SAVENAME"; then
                             echo "$(getSaveImagePath "$SAVENAME")" \
                                 || panicExit
@@ -236,13 +236,17 @@ case "$command" in
                         if test -n "$dir_saves" -a -d "$dir_saves"; then
                             saves=$(getAbsoluteDirectoryList "$dir_saves") \
                                 || panicExit
-                            test -z "$option" -o "$option" = all && echo 'savenames:'
+                            test -z "$option" -o "$option" = all && printf 'savenames: '
+                            first=1
                             echo "$saves" | while IFS= read -r i; do
                                 if test -d "$i"; then
                                     savename=$(basename "$i") \
                                         || panicExit
-                                    test -z "$option" -o "$option" = all && printf '  '
+                                    if test "$first" = 0; then
+                                        test -z "$option" -o "$option" = all && printf '           '
+                                    fi
                                     echo "$savename"
+                                    first=0
                                 fi
                             done
                         fi
