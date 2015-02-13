@@ -274,24 +274,36 @@ case "$command" in
                         * )             panicExit "Unknown \"save\" option: $option" ;;
                     esac
                 else
-                    if test -n "$SAVENAME"; then
-                        savename="$SAVENAME"
-                    elif test -n "$SAVEFILE"; then
+                    if test -n "$SAVEFILE"; then
                         savefile="$SAVEFILE"
                     else
-                        if test -n "$BOOT_SAVE"; then
-                            savename="$BOOT_SAVE"
-                            echo "Using boot-time save name: $savename"
-                        elif test -n "$PLATFORM_DEFAULT_SAVE"; then
-                            savename="$PLATFORM_DEFAULT_SAVE"
-                            echo "Using platform-default save name: $savename "
+                        testVariableDefinition MOUNT_DEVICE || panicExit
+                        if testIsMounted "$MOUNT_DEVICE"; then
+                            if test -n "$SAVENAME"; then
+                                savename="$SAVENAME"
+                            else
+                                if test -n "$BOOT_SAVE"; then
+                                    savename="$BOOT_SAVE"
+                                    echo "Using boot-time save name: $savename"
+                                elif test -n "$PLATFORM_DEFAULT_SAVE"; then
+                                    savename="$PLATFORM_DEFAULT_SAVE"
+                                    echo "Using platform-default save name: $savename "
+                                fi
+                            fi
+                        else
+                            panicExit "Boot device is not mounted"
                         fi
                     fi
                 fi
-                if test -n "$savename"; then
-                    $CMD_SAVE -s "$savename" || panicExit
-                elif test -n "$savefile"; then
+                if test -n "$savefile"; then
                     $CMD_SAVE -f "$savefile" || panicExit
+                elif test -n "$savename"; then
+                    testVariableDefinition MOUNT_DEVICE || panicExit
+                    if testIsMounted "$MOUNT_DEVICE"; then
+                        $CMD_SAVE -s "$savename" || panicExit
+                    else
+                        panicExit "Boot device is not mounted"
+                    fi
                 else
                     panicExit "Option \"save\" requires a valid \"savename\" or \"savefile\" value"
                 fi
@@ -299,7 +311,10 @@ case "$command" in
 
     +active )   $CMD_INCREASE_SAVE_SIZE ;;
 
-    grub )      option="$2"
+    grub )      testVariableDefinition MOUNT_DEVICE || panicExit
+                testIsMounted "$MOUNT_DEVICE" \
+                    || panicExit "Boot device is not mounted"
+                option="$2"
                 case "$option" in
                     show )      test -f "$PATH_GRUB_CONFIG" \
                                     || panicExit "Could not locate file: $PATH_GRUB_CONFIG"
