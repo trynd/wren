@@ -34,7 +34,7 @@
 # Columns denote To / From (destination and source, multi-space separated).
 # Use a hyphen (-) as the "from" value to delete the "to" file / directory.
 # Common platform run environment variables are allowed.
-# If a path or filename contains spaces, make sure to backslash (\) the spaces.
+# Paths should not contain spaces.
 SETLIST_COPY="
     /etc/${RUN_ENV_PLATFORM_NAME}                                   -
     /etc/${RUN_ENV_PLATFORM_NAME}/COPYRIGHT                         COPYRIGHT
@@ -45,6 +45,7 @@ SETLIST_COPY="
     /etc/${RUN_ENV_PLATFORM_NAME}/increase-save-size.sh             copy/increase-save-size.sh
     /etc/${RUN_ENV_PLATFORM_NAME}/platform-env                      platform-env
     /etc/${RUN_ENV_PLATFORM_NAME}/platform.conf.example             conf/platform.conf
+    /etc/${RUN_ENV_PLATFORM_NAME}/wren                              copy/wren
     /etc/${RUN_ENV_PLATFORM_NAME}/save.sh                           copy/save.sh
     /etc/${RUN_ENV_PLATFORM_NAME}/tools                             -
     /etc/${RUN_ENV_PLATFORM_NAME}/tools/enable-root.sh              tools/enable-root.sh
@@ -61,6 +62,12 @@ SETLIST_COPY="
     /etc/udev/rules.d/99-dmapper-hide.rules                         copy/99-dmapper-hide.rules
     /usr/share/initramfs-tools/hooks/_platform                      -
     /usr/src/${RUN_ENV_PLATFORM_NAME}-${RUN_ENV_PLATFORM_VERSION}   .
+"
+
+# Columns denote To / From (destination and source, multi-space separated).
+# Paths should not contain spaces.
+SETLIST_SYMLINK="
+    /usr/sbin/wren                                                  /etc/${RUN_ENV_PLATFORM_NAME}/wren
 "
 
 # A single string of space-separated package names to be passed to

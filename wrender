@@ -835,6 +835,7 @@ done
 
 # setlist
 SETLIST_COPY=""
+SETLIST_SYMLINK=""
 SETLIST_UNINSTALL=""
 SETLIST_INSTALL=""
 test -f "$path_dir_source/setlist" \
@@ -1009,8 +1010,13 @@ if test x"$should_copy" = x1; then
                 if test -e "$path_from"; then
                     mkdir -p "`dirname "$path_to"`" \
                         || fail "Unable to create parent directory for: \"$path_to\""
-                    cp -Rpf "$path_from" "$path_to" \
-                        || fail "Unable to copy source file \"$i\" to \"$path_to\""
+                    if test -d "$path_from"; then
+                        cp -Rpf "$path_from" "$path_to" \
+                            || fail "Unable to copy source directory \"$i\" to \"$path_to\""
+                    else
+                        cp -pf "$path_from" "$path_to" \
+                            || fail "Unable to copy source file \"$i\" to \"$path_to\""
+                    fi
                 else
                     echo "Source file does not exist: \"$path_from\" - skipping..."
                 fi
@@ -1020,27 +1026,68 @@ if test x"$should_copy" = x1; then
             path_to=""
             path_from=""
         fi
+
+    done
+
+    # iterate through setlist, creating the requested symbolic links
+    path_to=""
+    path_from=""
+    for i in $SETLIST_SYMLINK; do
+
+        if test x"$path_to" = x; then
+
+            # set "to" path
+            path_to=$path_dir_tmp/$name_dir_union/${i#/}
+            path_from=""
+
+            # delete if exists
+            if test -e "$path_to"; then
+                if test -d "$path_to"; then
+                    rm -rf "$path_to" \
+                        || fail "Unable to remove directory: $path_to"
+                else
+                    rm -f "$path_to" \
+                        || fail "Unable to remove file: $path_to"
+                fi
+            fi
+
+        else
+
+            # set "from" path
+            path_from=${i}
+
+            # create symbolic link
+            mkdir -p "`dirname "$path_to"`" \
+                || fail "Unable to create parent directory for: \"$path_to\""
+            ln -s "$path_from" "$path_to" \
+                || fail "Unable to create symbolic link from \"$i\" to \"$path_to\""
+
+            # clear paths
+            path_to=""
+            path_from=""
+        fi
+
     done
 
     # add system environment variables
     path_environment=$path_dir_tmp/$name_dir_union/etc/environment
     if test -f "$path_environment"; then
     
-      # add the running platform name to the system's environment variables
-      echo "RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
-          || fail "Unable to update the environment file: \"$path_environment\""
+        # add the running platform name to the system's environment variables
+        echo "RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
+            || fail "Unable to update the environment file: \"$path_environment\""
 
-      # add the running platform version to the system's environment variables
-      echo "RUN_ENV_PLATFORM_VERSION=\"$RUN_ENV_PLATFORM_VERSION\"" >>"$path_environment" \
-          || fail "Unable to update the environment file: \"$path_environment\""
+        # add the running platform version to the system's environment variables
+        echo "RUN_ENV_PLATFORM_VERSION=\"$RUN_ENV_PLATFORM_VERSION\"" >>"$path_environment" \
+            || fail "Unable to update the environment file: \"$path_environment\""
     
-      # add the running platform display name to the system's environment variables
-      echo "RUN_ENV_PLATFORM_DISPLAY_NAME=\"$RUN_ENV_PLATFORM_DISPLAY_NAME\"" >>"$path_environment" \
-          || fail "Unable to update the environment file: \"$path_environment\""
+        # add the running platform display name to the system's environment variables
+        echo "RUN_ENV_PLATFORM_DISPLAY_NAME=\"$RUN_ENV_PLATFORM_DISPLAY_NAME\"" >>"$path_environment" \
+            || fail "Unable to update the environment file: \"$path_environment\""
 
     else
 
-      fail "Unable to locate the environment file: \"$path_environment\""
+        fail "Unable to locate the environment file: \"$path_environment\""
 
     fi
 
