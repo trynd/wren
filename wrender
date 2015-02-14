@@ -332,6 +332,9 @@ STEP DESCRIPTIONS (IN ORDER OF BUILD STEPS)
           should include the platform environment, tools, and utility scripts
           as well as a copy of the source directory used to perform the build.
 
+        * Iterate through the setlist (SETLIST_SYMLINK), creating the requested
+          symbolic links in the chroot (union mounted) file system.
+
         * Add the new platform environment's name and version to the chroot
           (union mounted) system's environment variables.
 
