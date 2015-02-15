@@ -340,6 +340,9 @@ STEP DESCRIPTIONS (IN ORDER OF BUILD STEPS)
           should include the platform environment, tools, and utility scripts
           as well as a copy of the source directory used to perform the build.
 
+        * Iterate through the setlist (SETLIST_SYMLINK), creating the requested
+          symbolic links in the chroot (union mounted) file system.
+
         * Add the new platform environment's name to the chroot (union mounted)
           system's environment variables.
 
@@ -859,6 +862,7 @@ RUN_ENV_PLATFORM_PATH=${prefix%/}/$package
 
 # setlist
 SETLIST_COPY=""
+SETLIST_SYMLINK=""
 SETLIST_UNINSTALL=""
 SETLIST_INSTALL=""
 test -f "$path_dir_source/setlist" \
@@ -1033,12 +1037,57 @@ if test x"$should_copy" = x1; then
                 if test -e "$path_from"; then
                     mkdir -p "`dirname "$path_to"`" \
                         || fail "Unable to create parent directory for: \"$path_to\""
-                    cp -Rpf "$path_from" "$path_to" \
-                        || fail "Unable to copy source file \"$i\" to \"$path_to\""
+                    if test -d "$path_from"; then
+                        cp -Rpf "$path_from" "$path_to" \
+                            || fail "Unable to copy source directory \"$i\" to \"$path_to\""
+                    else
+                        cp -pf "$path_from" "$path_to" \
+                            || fail "Unable to copy source file \"$i\" to \"$path_to\""
+                    fi
                 else
                     echo "Source file does not exist: \"$path_from\" - skipping..."
                 fi
             fi
+
+            # clear paths
+            path_to=""
+            path_from=""
+        fi
+
+    done
+
+    # iterate through setlist, creating the requested symbolic links
+    path_to=""
+    path_from=""
+    for i in $SETLIST_SYMLINK; do
+
+        if test x"$path_to" = x; then
+
+            # set "to" path
+            path_to=$path_dir_tmp/$name_dir_union/${i#/}
+            path_from=""
+
+            # delete if exists
+            if test -e "$path_to"; then
+                if test -d "$path_to"; then
+                    rm -rf "$path_to" \
+                        || fail "Unable to remove directory: $path_to"
+                else
+                    rm -f "$path_to" \
+                        || fail "Unable to remove file: $path_to"
+                fi
+            fi
+
+        else
+
+            # set "from" path
+            path_from=${i}
+
+            # create symbolic link
+            mkdir -p "`dirname "$path_to"`" \
+                || fail "Unable to create parent directory for: \"$path_to\""
+            ln -s "$path_from" "$path_to" \
+                || fail "Unable to create symbolic link from \"$i\" to \"$path_to\""
 
             # clear paths
             path_to=""

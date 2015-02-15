@@ -1258,7 +1258,7 @@ createPidFile()
 }
 
 # Delete the PID (Process ID) file for the named process. This assumes there
-# is only once instance of the process running.
+# is only one instance of the process running.
 deletePidFile()
 {
     # required

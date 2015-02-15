@@ -221,6 +221,29 @@ set timeout=10
 set default=0"
 
 
+### CORE IMAGES
+
+# New (No Save Image)
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save"` \
+    && result="$result$menuentry"
+
+# New With Swap
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New With Swap)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-swap=LABEL=SWAP"` \
+    && result="$result$menuentry"
+
+# New To RAM
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New To RAM)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-to-ram"` \
+    && result="$result$menuentry"
+
+# New To RAM With Unmount
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New To RAM - Remove Media)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-unmount"` \
+    && result="$result$menuentry"
+
+# New With Test Mode
+menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New - TEST MODE - Log All - No Boot)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-test-mode"` \
+    && result="$result$menuentry"
+
+
 ### SAVE IMAGES
 
 # get saves path
@@ -244,32 +267,5 @@ $saves
 EOF
 fi
 
-
-### CORE IMAGES
-
-### NEW (No Save Image)
-
-menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save"` \
-    && result="$result$menuentry"
-
-### NEW WITH SWAP
-
-menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New With Swap)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-swap=LABEL=SWAP"` \
-    && result="$result$menuentry"
-
-### NEW TO RAM
-
-menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New To RAM)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-to-ram"` \
-    && result="$result$menuentry"
-
-### NEW TO RAM WITH UNMOUNT
-
-menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New To RAM - Remove Media)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-unmount"` \
-    && result="$result$menuentry"
-
-### NEW WITH TEST MODE
-
-menuentry=`generate "$RUN_ENV_PLATFORM_DISPLAY_NAME (New - TEST MODE - Log All - No Boot)" "$DEVICE_DIRECTORY_IMAGES" "$RUN_ENV_PLATFORM_NAME-skip-save $RUN_ENV_PLATFORM_NAME-test-mode"` \
-    && result="$result$menuentry"
 
 echo "$result"
