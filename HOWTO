@@ -27,7 +27,7 @@ Requirements
 Terminology
 -----------
 
-* LIVECD          The Ubuntu 14.04.1 LST 32-bit LiveCD iso or disc
+* LIVECD          The Ubuntu 14.04.1 LTS 32-bit LiveCD iso or disc
 * ROOT DISK       The temporary disk used to store an Ubuntu installation
 * WREN DISK       The portable USB disk used to store the Wren installation
 * ROOT PARTITION  The bootable partition on the ROOT DISK containing Ubuntu
