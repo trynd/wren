@@ -1,0 +1,572 @@
+#!/bin/sh
+#
+# NAME
+#
+#   wren
+#
+# DESCRIPTION
+#
+#   Control script for public-facing platform functionality.
+#
+# AUTHOR
+#
+#   Originally written by Michael Spencer.
+#   Maintained by the Wren project developers.
+#
+#
+# The Wren project; Copyright 2013-2015 the Wren project developers.
+# See the COPYRIGHT file in the top-level directory of this distribution
+# for individual attributions.
+#
+# This file is part of the Wren project. It is subject to the license terms
+# in the LICENSE file found in the top-level directory of this distribution.
+# No part of the Wren project, including this file, may be copied, modified,
+# propagated, or distributed except according to the terms contained in the
+# LICENSE file.
+#
+# This program comes with ABSOLUTELY NO WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE file found in the top-level directory of this distribution for
+# more details.
+#
+
+###
+### CONFIG
+###
+
+# clean environment
+unset IFS
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# ensure platform name is defined
+test x"$RUN_ENV_PLATFORM_PATH" = x \
+    && { echo "Could not determine platform environment path - exiting..." >&2 ; exit 1 ; }
+
+# load platform environment
+. "$RUN_ENV_PLATFORM_PATH/platform-env" \
+    || { echo "Could not load platform environment - exiting..." >&2 ; exit 1 ; }
+
+# failure function
+panicExit()
+{
+    test x"$1" = x \
+        && echo "An error occurred - exiting..." >&2 \
+        || echo "$1 - exiting..." >&2
+
+    exit 1
+}
+
+# usage information
+testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME || panicExit
+APP_NAME=$(basename "$0")
+APP_USAGE="
+NAME
+
+    $APP_NAME
+
+DESCRIPTION
+
+    $RUN_ENV_PLATFORM_DISPLAY_NAME platform management utility.
+
+    This application requires root (or sudo) permissions.
+
+SYNOPSIS
+
+    $APP_NAME <-h|--help>
+    $APP_NAME <COMMAND> [SUBCOMMAND|OPTION] [-v]
+
+    $APP_NAME +active
+    $APP_NAME get <variable>
+    $APP_NAME grub <generate|show|write [-v]>
+    $APP_NAME list [all]
+    $APP_NAME save [savename=<save_name>|savefile=</path/to/file>] [-v]
+    $APP_NAME set <variable> <value>
+    $APP_NAME status [all|device|platform|savefile|savename|savenames]
+    $APP_NAME unset <variable>
+
+OPTIONS
+
+    -h,--help   Display this usage information and exit.
+
+    +active     Allot additional RAM to increase the active storage
+                capacity.
+
+    get         Retrieve a stored variable value. Requires a variable name.
+
+    grub        Perform a Grub configuration SUBCOMMAND.
+    
+                Requires one SUBCOMMAND from the following:
+
+                    generate    Display a new Grub configuration to standard
+                                output (based on saves from the mounted boot
+                                device).
+
+                    show        Display the current Grub configuration used
+                                by the mounted boot device.
+
+                    write       Write a new Grub configuration to the
+                                mounted boot device (based on saves from the
+                                mounted boot device).
+
+                Accepts the \"-v\" modifier for more verbose output when
+                using the \"write\" SUBCOMMAND.
+
+    list        Display stored variables and their values.
+    
+                Used primarily for debugging purposes.
+    
+                Accepts one SUBCOMMAND from the following:
+
+                    all         Display all known variables, even if they
+                                are not set or stored.
+
+    save        Save to disk (or a target save file).
+    
+                Accepts one OPTION in the following format:
+                
+                    save savename=\"name_of_save_on_disk\"
+                    save savefile=\"/path/to/save/file\"
+                    
+                If no OPTION is provided, set variables or system defaults
+                will be used.
+
+                Accepts the \"-v\" modifier for more verbose output.
+
+    set         Store a variable for later use. Requires a variable and
+                value in either of the following formats:
+
+                    set variable value
+                    set variable=value
+
+                Accepted variables are:
+
+                    savefile, savename
+
+    status      Report on current platform state and expected paths/values.
+                Accepts an optional SUBCOMMAND to retrieve a specific state.
+                
+                Accepted SUBCOMMAND values are:
+
+                    all         Display all states (default).
+
+                    device      Show mounted boot device path (if mounted).
+
+                    platform    Show platform name and version.
+
+                    savefile    Show path to save image if \"save\" is
+                                called without additional parameters.
+
+                    savename    Show device save name that will be used if
+                                \"save\" is called without additional
+                                parameters.
+
+                    savenames   Show existing save names from the mounted
+                                boot device (if mounted).
+
+    unset       Unassign and remove a stored variable. Requires a variable
+                name.
+"
+printUsage()
+{
+    echo "$APP_USAGE"
+    test x"$1" = x || exit $1
+}
+case "$1" in -h | --help )
+    printUsage 0
+esac
+
+# ensure root permissions
+testRootUser || panicExit "Root permissions (or sudo) required"
+
+# load boot configurations and options
+BOOT_SAVE=""
+PLATFORM_DEFAULT_SAVE=""
+loadRunEnvConf || panicExit
+updateBootOptions || panicExit
+
+# script paths
+CMD_SAVE=$RUN_ENV_PLATFORM_PATH/save.sh
+CMD_INCREASE_SAVE_SIZE=$RUN_ENV_PLATFORM_PATH/increase-save-size.sh
+CMD_UPDATE_GRUB=$RUN_ENV_PLATFORM_PATH/update-grub.sh
+
+# Other paths
+testVariableDefinition MOUNT_DEVICE || panicExit
+PATH_GRUB_CONFIG=$MOUNT_DEVICE/boot/grub/grub.cfg
+
+# load environment variables
+testVariableDefinition RUN_ENV_DIRECTORY || panicExit
+env_file=$RUN_ENV_DIRECTORY/env_control
+SAVENAME=""
+SAVEFILE=""
+test -f "$env_file" && . "$env_file"
+
+# writes environment variables back to the file
+writeEnvFile()
+{
+    # Store control environment variables
+    env_content="### AUTOGENERATED
+### DO NOT EDIT
+SAVENAME=\"$SAVENAME\"
+SAVEFILE=\"$SAVEFILE\""
+    mkdir -p "$(dirname "$env_file")" || return $?
+    echo "$env_content" >"$env_file" || return $?
+    return 0
+}
+
+###
+### END CONFIG
+###
+
+# parse options
+command="$1"
+option="$2"
+case "$command" in
+
+    #
+    # list - display stored variables and their values
+    #
+    list )      # test for allowed options
+                if test -n "$option"; then
+                    case "$option" in
+                        all )   ;;
+                        * )     panicExit "Unknown \"list\" option: $option" ;;
+                    esac
+                fi
+
+                # show "all" variables or only those that are set 
+                test "$option" = all -o -n "$SAVENAME" && echo "savename=$SAVENAME"
+                test "$option" = all -o -n "$SAVEFILE" && echo "savefile=$SAVEFILE"
+                ;;
+
+    #
+    # get - retrieve stored variable values
+    #
+    get )       # print requested variable value
+                case "$option" in
+                    savename )  echo "$SAVENAME" ;;
+                    savefile )  echo "$SAVEFILE" ;;
+                    '' )        panicExit "Option \"get\" requires a variable to retrieve" ;;
+                    * )         panicExit "Unknown \"get\" option: $option" ;;
+                esac
+                ;;
+
+    #
+    # set - assign and store variable values
+    #
+    set )       # extract variable and value from option
+                case "$option" in
+                    savename=* )    value=${option#savename=}
+                                    option=savename
+                                    ;;
+                    savefile=* )    value=${option#savefile=}
+                                    option=savefile
+                                    ;;
+                    savename | \
+                    savefile )      value="$3"
+                                    ;;
+                    '' )            panicExit "Option \"set\" requires a variable and a value" ;;
+                    * )             panicExit "Unknown \"set\" option: $option" ;;
+                esac
+
+                # ensure a value is provided
+                if test -n "$value"; then
+                    # update stored variable values
+                    case "$option" in
+                        savename )  SAVENAME="$value"
+                                    SAVEFILE=""
+                                    writeEnvFile || panicExit
+                                    ;;
+                        savefile )  SAVEFILE="$value"
+                                    SAVENAME=""
+                                    writeEnvFile || panicExit
+                                    ;;
+                        '' )        panicExit "Option \"set\" requires a variable and a value" ;;
+                        * )         panicExit "Unknown \"set\" option: $option" ;;
+                    esac
+                else
+                    panicExit "Option \"set\" requires a variable and a value"
+                fi
+                ;;
+                
+    #
+    # unset - unassign and remove stored variable values
+    #
+    unset )     # update stored variable values
+                case "$option" in
+                    savename )  SAVENAME="" && writeEnvFile || panicExit ;;
+                    savefile )  SAVEFILE="" && writeEnvFile || panicExit ;;
+                    '' )        panicExit "Option \"unset\" requires an option to unset" ;;
+                    * )         panicExit "Unknown \"unset\" option: $option" ;;
+                esac
+                ;;
+
+    #
+    # status - report on current platform state and expected paths/values
+    #
+    status )    # check for invalid options
+                case "$option" in
+                    '' | all | platform | device | savename | savefile | savenames ) ;;
+                    * ) panicExit "Unknown \"status\" option: $option" ;;
+                esac
+
+                # determine if device is mounted
+                case "$option" in '' | all | device | savename | savefile | savenames )
+                    testVariableDefinition MOUNT_DEVICE \
+                        || panicExit
+                    testIsMounted "$MOUNT_DEVICE" \
+                        && device_mounted=1 \
+                        || device_mounted=0
+                esac
+
+                # add newline for "all"
+                case "$option" in '' | all )
+                    echo
+                esac
+
+                # platform
+                case "$option" in platform | all | '' )
+                    # display platform's display name, real name, and version
+                    testVariableDefinition RUN_ENV_PLATFORM_NAME || panicExit
+                    testVariableDefinition RUN_ENV_PLATFORM_VERSION || panicExit
+                    testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME || panicExit
+                    test -z "$option" -o "$option" = all && printf 'platform:  '
+                    echo "$RUN_ENV_PLATFORM_DISPLAY_NAME ($RUN_ENV_PLATFORM_NAME-$RUN_ENV_PLATFORM_VERSION)"
+                esac
+
+                # device
+                case "$option" in device | all | '' )
+                    device=""
+                    if test "$device_mounted" = 1; then
+                        # get device path from expected mount path
+                        testVariableDefinition MOUNT_DEVICE || panicExit
+                        device=$(cat /proc/mounts | grep "\S\+\s\+$MOUNT_DEVICE\s" | cut -d ' ' -f 1) \
+                            || panicExit
+                    fi
+                    if test "$device_mounted" = 0 -o -z "$device"; then
+                        # display not mounted message
+                        test -z "$option" -o "$option" = all && printf 'device:    '
+                        echo "<not mounted>"
+                    else
+                        # follow any symbolic links to get the real device path
+                        device=$(readlink -m "$device") || panicExit
+                        # display device path
+                        test -z "$option" -o "$option" = all && printf 'device:    '
+                        echo "$device"
+                    fi
+                esac
+
+                # savename
+                case "$option" in savename | all | '' )
+                    # only show a value if the device is mounted and a specific
+                    # save file is not designated
+                    if test "$device_mounted" = 1 -a -z "$SAVEFILE"; then
+                        test -z "$option" -o "$option" = all && printf 'savename:  '
+                        # select the appropriate save name from (in order):
+                        # set savename, boot option, platform default
+                        if test -n "$SAVENAME"; then
+                            echo "$SAVENAME"
+                        elif test -n "$BOOT_SAVE"; then
+                            echo "$BOOT_SAVE"
+                        elif test -n "$PLATFORM_DEFAULT_SAVE"; then
+                            echo "$PLATFORM_DEFAULT_SAVE"
+                        fi
+                    fi
+                esac
+
+                # savefile
+                case "$option" in savefile | all | '' )
+                    if test -n "$SAVEFILE"; then
+                        # always display if savefile has been set
+                        test -z "$option" -o "$option" = all && printf 'savefile:  '
+                        echo "$SAVEFILE"
+                    elif test "$device_mounted" = 1; then
+                        # otherwise, if the device is mounted,
+                        # determine the save name and matching file path
+                        savename=$SAVENAME
+                        test -z "$savename" && savename=$BOOT_SAVE
+                        test -z "$savename" && savename=$PLATFORM_DEFAULT_SAVE
+                        test -z "$savename" \
+                            && panicExit "Unable to determine an appropriate savename"
+                        test -z "$option" -o "$option" = all && printf 'savefile:  '
+                        echo "$(getSaveImagePath "$savename")" || panicExit
+                    fi
+                esac
+
+                # savenames
+                case "$option" in savenames | all | '' )
+                    if test "$device_mounted" = 1; then
+                        # if the device is mounted, iterate over the children
+                        # of the device's saves storage directory
+                        dir_saves=$(getDeviceSavesDirectoryPath) || panicExit
+                        if test -n "$dir_saves" -a -d "$dir_saves"; then
+                            saves=$(getAbsoluteDirectoryList "$dir_saves") \
+                                || panicExit
+                            test -z "$option" -o "$option" = all && printf 'savenames: '
+                            first=1
+                            echo "$saves" | while IFS= read -r i; do
+                                # display the names of child directories
+                                if test -d "$i"; then
+                                    savename=$(basename "$i") || panicExit
+                                    if test "$first" = 0; then
+                                        test -z "$option" -o "$option" = all && printf '           '
+                                    fi
+                                    echo "$savename"
+                                    first=0
+                                fi
+                            done
+                        fi
+                    fi
+                esac
+
+                # add newline for "all"
+                case "$option" in '' | all )
+                    echo
+                esac
+                ;;
+                
+    #
+    # save - store active storage content to a save file
+    #
+    save )      savename=""
+                savefile=""
+
+                # check for verbose modifier
+                modifier="$3"
+                test "$option" = "-v" \
+                    && modifier=$option \
+                    && option=""
+
+                # determine savefile or savename
+                if test -n "$option"; then
+                    case "$option" in
+                        savename=* )    savename="${option#savename=}" ;;
+                        savefile=* )    savefile="${option#savefile=}" ;;
+                        * )             panicExit "Unknown \"save\" option: $option" ;;
+                    esac
+                else
+                    if test -n "$SAVEFILE"; then
+                        savefile="$SAVEFILE"
+                        test "$modifier" = "-v" \
+                            && echo "Using save file: $savefile"
+                    else
+                        testVariableDefinition MOUNT_DEVICE || panicExit
+                        if testIsMounted "$MOUNT_DEVICE"; then
+                            if test -n "$SAVENAME"; then
+                                savename="$SAVENAME"
+                                test "$modifier" = "-v" \
+                                    && echo "Using save name: $savename"
+                            else
+                                if test -n "$BOOT_SAVE"; then
+                                    savename="$BOOT_SAVE"
+                                    test "$modifier" = "-v" \
+                                        && echo "Using boot-time save name: $savename"
+                                elif test -n "$PLATFORM_DEFAULT_SAVE"; then
+                                    savename="$PLATFORM_DEFAULT_SAVE"
+                                    test "$modifier" = "-v" \
+                                        && echo "Using platform-default save name: $savename "
+                                fi
+                            fi
+                        else
+                            panicExit "Boot device is not mounted"
+                        fi
+                    fi
+                fi
+
+                # save using savefile or savename
+                if test -n "$savefile"; then
+                    $CMD_SAVE -f "$savefile" || panicExit
+                elif test -n "$savename"; then
+                    testVariableDefinition MOUNT_DEVICE || panicExit
+                    if testIsMounted "$MOUNT_DEVICE"; then
+                        $CMD_SAVE -s "$savename" || panicExit
+                    else
+                        panicExit "Boot device is not mounted"
+                    fi
+                else
+                    panicExit "Option \"save\" requires a valid \"savename\" or \"savefile\" value"
+                fi
+                ;;
+
+    #
+    # +active - alot additional RAM to increase the active storage capacity
+    #
+    +active )   $CMD_INCREASE_SAVE_SIZE || panicExit ;;
+
+    #
+    # grub - manage the Grub configuration (show, generate, or write)
+    #
+    grub )      testVariableDefinition MOUNT_DEVICE || panicExit
+                testIsMounted "$MOUNT_DEVICE" \
+                    || panicExit "Boot device is not mounted"
+
+                # check for verbose modifier
+                modifier="$3"
+                test "$option" = "-v" \
+                    && modifier=$option \
+                    && option=""
+
+                # perform selected option
+                case "$option" in
+
+                    #
+                    # show - display the current Grub configuration
+                    #
+                    show )      test -f "$PATH_GRUB_CONFIG" \
+                                    || panicExit "Could not locate file: $PATH_GRUB_CONFIG"
+                                cat "$PATH_GRUB_CONFIG" || panicExit
+                                ;;
+
+                    #
+                    # generate - create and display (but do not store) a new
+                    #            Grub configuration based on current saves
+                    #
+                    generate )  $CMD_UPDATE_GRUB || panicExit
+                                ;;
+
+                    #
+                    # write - create and store a new Grub configuration, making
+                    #         a backup if a previous configuration existed
+                    #
+                    write )     # ensure grub directory exists
+                                test "$modifier" = '-v' \
+                                    && echo "Verifying Grub configuration directory..."
+                                dir_grub_config=$(dirname "$PATH_GRUB_CONFIG") \
+                                    && test -d "$dir_grub_config" \
+                                    || panicExit "Grub configuration directory not found"
+
+                                # generate a new configuration
+                                test "$modifier" = '-v' \
+                                    && echo "Generating updated Grub configuration..."
+                                updated_grub_config=$($CMD_UPDATE_GRUB) \
+                                    || panicExit
+
+                                # make a backup of the current config
+                                if test -f "$PATH_GRUB_CONFIG"; then
+                                    test "$modifier" = '-v' \
+                                        && echo "Backing up current Grub configuration..."
+                                    cp "$PATH_GRUB_CONFIG" "$PATH_GRUB_CONFIG~" \
+                                        || panicExit
+                                fi
+
+                                # write the new configuration to disk
+                                test "$modifier" = '-v' \
+                                    && echo "Writing Grub configuration..."
+                                echo "$updated_grub_config" >"$PATH_GRUB_CONFIG" \
+                                    || panicExit
+
+                                test "$modifier" = '-v' && echo "Done."
+                                ;;
+
+                    '' )        panicExit "Option \"grub\" requires a subcommand option"
+                                ;;
+
+                    * )         panicExit "Unknown \"grub\" option: $option"
+                                ;;
+                esac
+                ;;
+
+    '' )        printUsage 1 ;;
+
+    * )         panicExit "Unknown option: $command" ;;
+
+esac

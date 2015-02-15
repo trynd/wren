@@ -34,23 +34,24 @@
 # Columns denote To / From (destination and source, multi-space separated).
 # Use a hyphen (-) as the "from" value to delete the "to" file / directory.
 # Common platform run environment variables are allowed.
-# If a path or filename contains spaces, make sure to backslash (\) the spaces.
+# Paths should not contain spaces.
 SETLIST_COPY="
-    /etc/${RUN_ENV_PLATFORM_NAME}                                   -
-    /etc/${RUN_ENV_PLATFORM_NAME}/COPYRIGHT                         COPYRIGHT
-    /etc/${RUN_ENV_PLATFORM_NAME}/LICENSE                           LICENSE
-    /etc/${RUN_ENV_PLATFORM_NAME}/boot.conf.example                 conf/boot.conf
-    /etc/${RUN_ENV_PLATFORM_NAME}/device.conf.example               conf/device.conf
-    /etc/${RUN_ENV_PLATFORM_NAME}/grub.cfg.example                  conf/grub.cfg
-    /etc/${RUN_ENV_PLATFORM_NAME}/increase-save-size.sh             copy/increase-save-size.sh
-    /etc/${RUN_ENV_PLATFORM_NAME}/platform-env                      platform-env
-    /etc/${RUN_ENV_PLATFORM_NAME}/platform.conf.example             conf/platform.conf
-    /etc/${RUN_ENV_PLATFORM_NAME}/save.sh                           copy/save.sh
-    /etc/${RUN_ENV_PLATFORM_NAME}/tools                             -
-    /etc/${RUN_ENV_PLATFORM_NAME}/tools/enable-root.sh              tools/enable-root.sh
-    /etc/${RUN_ENV_PLATFORM_NAME}/tools/disable-root.sh             tools/disable-root.sh
-    /etc/${RUN_ENV_PLATFORM_NAME}/tools/rename-user.sh              tools/rename-user.sh
-    /etc/${RUN_ENV_PLATFORM_NAME}/update-grub.sh                    copy/update-grub.sh
+    ${RUN_ENV_PLATFORM_PATH}                                        -
+    ${RUN_ENV_PLATFORM_PATH}/COPYRIGHT                              COPYRIGHT
+    ${RUN_ENV_PLATFORM_PATH}/LICENSE                                LICENSE
+    ${RUN_ENV_PLATFORM_PATH}/boot.conf.example                      conf/boot.conf
+    ${RUN_ENV_PLATFORM_PATH}/device.conf.example                    conf/device.conf
+    ${RUN_ENV_PLATFORM_PATH}/grub.cfg.example                       conf/grub.cfg
+    ${RUN_ENV_PLATFORM_PATH}/increase-save-size.sh                  copy/increase-save-size.sh
+    ${RUN_ENV_PLATFORM_PATH}/platform-env                           platform-env
+    ${RUN_ENV_PLATFORM_PATH}/platform.conf.example                  conf/platform.conf
+    ${RUN_ENV_PLATFORM_PATH}/wren                                   copy/wren
+    ${RUN_ENV_PLATFORM_PATH}/save.sh                                copy/save.sh
+    ${RUN_ENV_PLATFORM_PATH}/tools                                  -
+    ${RUN_ENV_PLATFORM_PATH}/tools/enable-root.sh                   tools/enable-root.sh
+    ${RUN_ENV_PLATFORM_PATH}/tools/disable-root.sh                  tools/disable-root.sh
+    ${RUN_ENV_PLATFORM_PATH}/tools/rename-user.sh                   tools/rename-user.sh
+    ${RUN_ENV_PLATFORM_PATH}/update-grub.sh                         copy/update-grub.sh
     /etc/apt/preferences.d/no-bootloader                            copy/no-bootloader
     /etc/apt/preferences.d/no-misc                                  copy/no-misc
     /etc/initramfs-tools/modules                                    copy/modules
@@ -61,6 +62,12 @@ SETLIST_COPY="
     /etc/udev/rules.d/99-dmapper-hide.rules                         copy/99-dmapper-hide.rules
     /usr/share/initramfs-tools/hooks/_platform                      -
     /usr/src/${RUN_ENV_PLATFORM_NAME}-${RUN_ENV_PLATFORM_VERSION}   .
+"
+
+# Columns denote To / From (destination and source, multi-space separated).
+# Paths should not contain spaces.
+SETLIST_SYMLINK="
+    /usr/sbin/wren                                                  /etc/${RUN_ENV_PLATFORM_NAME}/wren
 "
 
 # A single string of space-separated package names to be passed to

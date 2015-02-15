@@ -102,12 +102,12 @@ EOF
 
 
 # ensure platform name is defined
-test x"${RUN_ENV_PLATFORM_NAME}" = x \
-    && { echo "Could not determine platform environment name - exiting..." >&2 ; exit 1 ; }
+test x"${RUN_ENV_PLATFORM_PATH}" = x \
+    && { echo "Could not determine platform environment path - exiting..." >&2 ; exit 1 ; }
 
 
 # load platform environment
-. "/etc/${RUN_ENV_PLATFORM_NAME}/platform-env" \
+. "${RUN_ENV_PLATFORM_PATH}/platform-env" \
     || { echo "Could not load platform environment - exiting..." >&2 ; exit 1 ; }
 
 
