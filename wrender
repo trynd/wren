@@ -332,8 +332,8 @@ STEP DESCRIPTIONS (IN ORDER OF BUILD STEPS)
           should include the platform environment, tools, and utility scripts
           as well as a copy of the source directory used to perform the build.
 
-        * Add the new platform environment's name and version to the chroot
-          (union mounted) system's environment variables.
+        * Add the new platform environment's name to the chroot (union mounted)
+          system's environment variables.
 
     UNINSTALL
 
@@ -823,7 +823,6 @@ test -f "$path_dir_source/conf/platform.conf" \
     || fail "Unable to load required source file: \"conf/platform.conf\""
 for i in \
     RUN_ENV_PLATFORM_NAME \
-    RUN_ENV_PLATFORM_DISPLAY_NAME \
     RUN_ENV_PLATFORM_VERSION \
     PLATFORM_IMAGE_PLATFORM \
     PLATFORM_IMAGE_KERNEL \
@@ -1020,27 +1019,21 @@ if test x"$should_copy" = x1; then
             path_to=""
             path_from=""
         fi
+
     done
 
     # add system environment variables
     path_environment=$path_dir_tmp/$name_dir_union/etc/environment
     if test -f "$path_environment"; then
     
-      # add the running platform name to the system's environment variables
-      echo "RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
-          || fail "Unable to update the environment file: \"$path_environment\""
-
-      # add the running platform version to the system's environment variables
-      echo "RUN_ENV_PLATFORM_VERSION=\"$RUN_ENV_PLATFORM_VERSION\"" >>"$path_environment" \
-          || fail "Unable to update the environment file: \"$path_environment\""
-    
-      # add the running platform display name to the system's environment variables
-      echo "RUN_ENV_PLATFORM_DISPLAY_NAME=\"$RUN_ENV_PLATFORM_DISPLAY_NAME\"" >>"$path_environment" \
-          || fail "Unable to update the environment file: \"$path_environment\""
+        # add the running platform name to the system's environment variables
+        grep "^RUN_ENV_PLATFORM_NAME=" "$path_environment" 1>/dev/null 2>&1 \
+            || echo "RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
+            || fail "Unable to update the environment file: \"$path_environment\""
 
     else
 
-      fail "Unable to locate the environment file: \"$path_environment\""
+        fail "Unable to locate the environment file: \"$path_environment\""
 
     fi
 
