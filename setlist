@@ -47,7 +47,6 @@ SETLIST_COPY="
     ${RUN_ENV_PLATFORM_PATH}/platform.conf.example                  conf/platform.conf
     ${RUN_ENV_PLATFORM_PATH}/wren                                   copy/wren
     ${RUN_ENV_PLATFORM_PATH}/save.sh                                copy/save.sh
-    ${RUN_ENV_PLATFORM_PATH}/save-btrfs.sh                          copy/save-btrfs.sh
     ${RUN_ENV_PLATFORM_PATH}/tools                                  -
     ${RUN_ENV_PLATFORM_PATH}/tools/enable-root.sh                   tools/enable-root.sh
     ${RUN_ENV_PLATFORM_PATH}/tools/disable-root.sh                  tools/disable-root.sh
