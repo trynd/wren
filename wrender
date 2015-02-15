@@ -511,12 +511,12 @@ for i in "$@"; do
                 --destination|-d )      flag_dir_destination=1 ;;
                 --destination=* )       path_dir_destination=${i#--destination=} ;;
                 -d* )                   path_dir_destination=${i#-d} ;;
-                                        
+
                 --help|-h )             printUsage 0 ;;
 
                 --package )             flag_package=1 ;;
                 --package=* )           package=${i#--package=} ;;
-                                        
+
                 --platform|-p )         flag_img_platform=1 ;;
                 --platform=* )          path_img_platform=${i#--platform=} ;;
                 -p* )                   path_img_platform=${i#-p} ;;
@@ -1099,15 +1099,16 @@ if test x"$should_copy" = x1; then
     # add system environment variables
     path_environment=$path_dir_tmp/$name_dir_union/etc/environment
     if test -f "$path_environment"; then
-    
-        # add the running platform name to the system's environment variables
-        grep "^RUN_ENV_PLATFORM_NAME=" "$path_environment" 1>/dev/null 2>&1 \
-            || echo "RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
-            || fail "Unable to update the environment file: \"$path_environment\""
 
         # add the running platform path ro the system's environment variables
         grep "^RUN_ENV_PLATFORM_PATH=" "$path_environment" 1>/dev/null 2>&1 \
             || echo "RUN_ENV_PLATFORM_PATH=\"$RUN_ENV_PLATFORM_PATH\"" >>"$path_environment" \
+            || fail "Unable to update the environment file: \"$path_environment\""
+
+        # add the running platform name to the system's environment variables
+        grep "^RUN_ENV_PLATFORM_NAME=" "$path_environment" 1>/dev/null 2>&1 \
+            || echo "### DEPRECATED ###
+RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
             || fail "Unable to update the environment file: \"$path_environment\""
 
     else
@@ -1121,11 +1122,12 @@ if test x"$should_copy" = x1; then
     path_sudoers=$path_dir_tmp/$name_dir_union/etc/sudoers
     chmod u+w "$path_sudoers"
     echo '
-Defaults env_keep += "RUN_ENV_PLATFORM_NAME"' \
+Defaults env_keep += "RUN_ENV_PLATFORM_PATH"' \
         >>"$path_sudoers" \
         || fail "Unable to update the sudoers file: \"$path_sudoers\""
     echo '
-Defaults env_keep += "RUN_ENV_PLATFORM_PATH"' \
+### DEPRECATED ###
+Defaults env_keep += "RUN_ENV_PLATFORM_NAME"' \
         >>"$path_sudoers" \
         || fail "Unable to update the sudoers file: \"$path_sudoers\""
     chmod u-w "$path_sudoers"
