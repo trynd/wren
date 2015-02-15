@@ -1074,12 +1074,16 @@ if test x"$should_copy" = x1; then
 
     fi
 
-    # add an exception to the sudoers file to retain the running platform name
-    # environment variable when using sudo
+    # add an exception to the sudoers file to retain the running platform's
+    # environment variables when using sudo
     path_sudoers=$path_dir_tmp/$name_dir_union/etc/sudoers
     chmod u+w "$path_sudoers"
     echo '
 Defaults env_keep += "RUN_ENV_PLATFORM_NAME"' \
+        >>"$path_sudoers" \
+        || fail "Unable to update the sudoers file: \"$path_sudoers\""
+    echo '
+Defaults env_keep += "RUN_ENV_PLATFORM_PATH"' \
         >>"$path_sudoers" \
         || fail "Unable to update the sudoers file: \"$path_sudoers\""
     chmod u-w "$path_sudoers"
