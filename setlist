@@ -67,7 +67,7 @@ SETLIST_COPY="
 # Columns denote To / From (destination and source, multi-space separated).
 # Paths should not contain spaces.
 SETLIST_SYMLINK="
-    /usr/sbin/wren                                                  /etc/${RUN_ENV_PLATFORM_NAME}/wren
+    /usr/sbin/wren                                                  ${RUN_ENV_PLATFORM_PATH}/wren
 "
 
 # A single string of space-separated package names to be passed to
