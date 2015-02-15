@@ -96,6 +96,10 @@ OPTIONS
 
     --help,-h           OPTIONAL - Print this usage information and exit.
 
+    --package           OPTIONAL - The name of the directory into which the
+                        platform-layer application files will be installed.
+                        If this is not defined, the platform name is assumed.
+
     --platform,-p       OPTIONAL - Path to the existing platform file to use as
                         a basis for the newly created platform (essentially
                         updates an existing platform image).
@@ -105,6 +109,10 @@ OPTIONS
     --platform-mount    OPTIONAL - Path to a platform tree directory. This can
                         be used in place of --platform to specify an existing
                         platform tree directory location.
+
+    --prefix            OPTIONAL - Path to the directory under which the
+                        platform's package directory should be installed.
+                        If this is not defined, '/etc' is assumed.
 
     --root,-r           REQUIRED - Path to the root image to be used in the
                         chroot environment. Without this image it would be
@@ -124,7 +132,7 @@ OPTIONS
 
     --tmp,-t            OPTIONAL - Path to the temporary directory to use for
                         building the platform files. If this option is not
-                        specified '/tmp/platform' is assumed.
+                        specified, '/tmp/platform' is assumed.
 
 STEP-SPECIFIC OPTIONS (NOTE: ORDER MATTERS)
 
@@ -335,6 +343,9 @@ STEP DESCRIPTIONS (IN ORDER OF BUILD STEPS)
         * Add the new platform environment's name to the chroot (union mounted)
           system's environment variables.
 
+        * Add the new platform environment's install path to the chroot (union
+          mounted) system's environment variables.
+
     UNINSTALL
 
         These modifications will be a part of the exported platform image.
@@ -412,12 +423,16 @@ fail()
 
 pwd=`pwd`
 
+default_prefix=/etc
+
 default_path_dir_tmp=/tmp/platform
 name_dir_root=1-root
 name_dir_export=2-export
 name_dir_union=3-union
 name_dir_platform=xx-platform
 
+prefix=""
+package=""
 path_dir_source=""
 path_dir_destination=""
 path_dir_tmp=""
@@ -436,6 +451,8 @@ should_build=""
 should_export=""
 should_clean=""
 
+flag_prefix=0
+flag_package=0
 flag_dir_source=0
 flag_dir_destination=0
 flag_dir_tmp=0
@@ -447,6 +464,14 @@ flag_img_platform=0
 # load options
 for i in "$@"; do
     case 1 in
+        $flag_prefix )
+            prefix=$i
+            flag_prefix=0
+            ;;
+        $flag_package )
+            package=$i
+            flag_package=0
+            ;;
         $flag_dir_source )
             path_dir_source=$i
             flag_dir_source=0
@@ -480,45 +505,39 @@ for i in "$@"; do
 
                 ### OPTIONS
 
-                --destination|-d )
-                    flag_dir_destination=1
-                    ;;
-                -d* )
-                    path_dir_destination=${i#-d}
-                    ;;
-                --help|-h )
-                    printUsage 0
-                    ;;
-                --platform|-p )
-                    flag_img_platform=1
-                    ;;
-                -p* )
-                    path_img_platform=${i#-p}
-                    ;;
-                --platform-mount )
-                    flag_dir_platform=1
-                    ;;
-                --root|-r )
-                    flag_img_root=1
-                    ;;
-                -r* )
-                    path_img_root=${i#-r}
-                    ;;
-                --root-mount )
-                    flag_dir_root=1
-                    ;;
-                --source|-s )
-                    flag_dir_source=1
-                    ;;
-                -s* )
-                    path_dir_source=${i#-s}
-                    ;;
-                --tmp|-t )
-                    flag_dir_tmp=1
-                    ;;
-                -t* )
-                    path_dir_tmp=${i#-t}
-                    ;;
+                --destination|-d )      flag_dir_destination=1 ;;
+                --destination=* )       path_dir_destination=${i#--destination=} ;;
+                -d* )                   path_dir_destination=${i#-d} ;;
+                                        
+                --help|-h )             printUsage 0 ;;
+
+                --package )             flag_package=1 ;;
+                --package=* )           package=${i#--package=} ;;
+                                        
+                --platform|-p )         flag_img_platform=1 ;;
+                --platform=* )          path_img_platform=${i#--platform=} ;;
+                -p* )                   path_img_platform=${i#-p} ;;
+
+                --platform-mount )      flag_dir_platform=1 ;;
+                --platform-mount=* )    path_dir_platform=${i#--platform-mount=} ;;
+
+                --prefix )              flag_prefix=1 ;;
+                --prefix=* )            prefix=${i#--prefix=} ;;
+
+                --root|-r )             flag_img_root=1 ;;
+                --root=* )              path_img_root=${i#--root=} ;;
+                -r* )                   path_img_root=${i#-r} ;;
+
+                --root-mount )          flag_dir_root=1 ;;
+                --root-mount=* )        path_dir_root=${i#--root-mount=} ;;
+
+                --source|-s )           flag_dir_source=1 ;;
+                --source=* )            path_dir_source=${i#--source=} ;;
+                -s* )                   path_dir_source=${i#-s} ;;
+
+                --tmp|-t )              flag_dir_tmp=1 ;;
+                --tmp=* )               path_dir_tmp=${i#--tmp=} ;;
+                -t* )                   path_dir_tmp=${i#-t} ;;
 
                 ### STEP OPTIONS
 
@@ -754,6 +773,7 @@ test x"$should_export" = x      && should_export=$default_should
 test x"$should_clean" = x       && should_clean=$default_should
 
 # assign defaults for other unset options
+test x"$prefix" = x                 && prefix=$default_prefix
 test x"$path_dir_source" = x        && path_dir_source=`dirname $0`
 test x"$path_dir_destination" = x   && path_dir_destination=$pwd/build
 test x"$path_dir_tmp" = x           && path_dir_tmp=$default_path_dir_tmp
@@ -814,6 +834,7 @@ echo '---------------'
 echo
 
 # platform-env
+RUN_ENV_PLATFORM_PATH=""
 RUN_ENV_PLATFORM_NAME=""
 test -f "$path_dir_source/platform-env" \
     && . "$path_dir_source/platform-env" \
@@ -831,6 +852,10 @@ do
     eval "test x\"\$$i\" = x" \
         && fail "Required variable not defined by source files: $i"
 done
+
+# install path
+test x"$package" = x && package=$RUN_ENV_PLATFORM_NAME
+RUN_ENV_PLATFORM_PATH=${prefix%/}/$package
 
 # setlist
 SETLIST_COPY=""
@@ -1031,18 +1056,27 @@ if test x"$should_copy" = x1; then
             || echo "RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
             || fail "Unable to update the environment file: \"$path_environment\""
 
+        # add the running platform path ro the system's environment variables
+        grep "^RUN_ENV_PLATFORM_PATH=" "$path_environment" 1>/dev/null 2>&1 \
+            || echo "RUN_ENV_PLATFORM_PATH=\"$RUN_ENV_PLATFORM_PATH\"" >>"$path_environment" \
+            || fail "Unable to update the environment file: \"$path_environment\""
+
     else
 
         fail "Unable to locate the environment file: \"$path_environment\""
 
     fi
 
-    # add an exception to the sudoers file to retain the running platform name
-    # environment variable when using sudo
+    # add an exception to the sudoers file to retain the running platform's
+    # environment variables when using sudo
     path_sudoers=$path_dir_tmp/$name_dir_union/etc/sudoers
     chmod u+w "$path_sudoers"
     echo '
 Defaults env_keep += "RUN_ENV_PLATFORM_NAME"' \
+        >>"$path_sudoers" \
+        || fail "Unable to update the sudoers file: \"$path_sudoers\""
+    echo '
+Defaults env_keep += "RUN_ENV_PLATFORM_PATH"' \
         >>"$path_sudoers" \
         || fail "Unable to update the sudoers file: \"$path_sudoers\""
     chmod u-w "$path_sudoers"

@@ -66,11 +66,15 @@ fail()
 }
 
 # load platform environment
-test x"$RUN_ENV_PLATFORM_NAME" != x \
-    && . "/etc/$RUN_ENV_PLATFORM_NAME/platform-env" \
+test x"$RUN_ENV_PLATFORM_PATH" != x \
+    && . "$RUN_ENV_PLATFORM_PATH/platform-env" \
     && loadRunEnvConf \
     && updateBootOptions \
     || fail "Unable to load platform environment"
+
+# ensure platform name
+testVariableDefinition RUN_ENV_PLATFORM_NAME \
+    || fail "Unable to determine platform name"
 
 # ensure platform display name
 testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME \
