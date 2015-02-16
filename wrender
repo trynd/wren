@@ -112,7 +112,7 @@ OPTIONS
 
     --prefix            OPTIONAL - Path to the directory under which the
                         platform's package directory should be installed.
-                        If this is not defined, '/etc' is assumed.
+                        If this is not defined, '/opt' is assumed.
 
     --root,-r           REQUIRED - Path to the root image to be used in the
                         chroot environment. Without this image it would be
@@ -426,7 +426,7 @@ fail()
 
 pwd=`pwd`
 
-default_prefix=/etc
+default_prefix=/opt
 
 default_path_dir_tmp=/tmp/platform
 name_dir_root=1-root
