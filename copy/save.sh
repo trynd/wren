@@ -214,8 +214,8 @@ active_volume_image_path=`getActiveVolumeImagePath` \
     && test -f "$active_volume_image_path" \
     && active_volume_root_subvolume_path=`getActiveVolumeRootSubvolumePath` \
     && test -d "$active_volume_root_subvolume_path" \
-    && active_volume_snapshot_subvolume_path=`getActiveVolumeSnapshotSubvolumePath` \
-    && test x"$active_volume_snapshot_subvolume_path" != x \
+    && active_volume_root_snapshot_subvolume_path=`getActiveVolumeRootSnapshotSubvolumePath` \
+    && test x"$active_volume_root_snapshot_subvolume_path" != x \
     && use_snapshot=1 \
     || echo "Snapshot not possible - falling back to standard copy mode"
   
@@ -233,12 +233,10 @@ if test x"$use_snapshot" = x1; then
 
 
     # create a snapshot of the active volume's root subvolume
-    active_volume_root_subvolume_path=`getActiveVolumeRootSubvolumePath` \
-        && active_volume_snapshot_subvolume_path=`getActiveVolumeSnapshotSubvolumePath` \
-        && createSubvolumeSnapshot \
-            "$active_volume_root_subvolume_path" \
-            "$active_volume_snapshot_subvolume_path" \
-        || panicExit
+      createSubvolumeSnapshot \
+          "$active_volume_root_subvolume_path" \
+          "$active_volume_root_snapshot_subvolume_path" \
+          || panicExit
 
 
     # Ensure volume information is up to date
@@ -248,7 +246,7 @@ if test x"$use_snapshot" = x1; then
     # mount the snapshot subvolume to the standard tmp snapshot location
     mkdir -p "$MOUNT_SNAPSHOT_TMP" || panicExit
     mount --bind -o ro \
-        "$active_volume_snapshot_subvolume_path" \
+        "$active_volume_root_snapshot_subvolume_path" \
         "$MOUNT_SNAPSHOT_TMP" \
         || panicExit
     # readonly must be set separately for bind mounts in some kernels
@@ -418,7 +416,7 @@ if test x"$use_snapshot" = x1; then
 
 
     # delete the snapshot subvolume
-    deleteSubvolume "$active_volume_snapshot_subvolume_path" || panicExit
+    deleteSubvolume "$active_volume_root_snapshot_subvolume_path" || panicExit
 
 
 fi

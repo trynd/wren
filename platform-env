@@ -1116,6 +1116,9 @@ getActiveVolumePath()
 # content's root file system tree.
 getActiveVolumeRootSubvolumePath()
 {
+    # local
+    local active_volume_path
+
     testVariableDefinition SUBVOLUME_NAME_ROOT || return $?
 
     active_volume_path=`getActiveVolumePath` || return $?
@@ -1128,13 +1131,34 @@ getActiveVolumeRootSubvolumePath()
 # Determine an absolute path for the (in-memory) active volume snapshot
 # subvolume, which serves as RAM-based delta storage during save-to-disk
 # procedures.
-getActiveVolumeSnapshotSubvolumePath()
+getActiveVolumeRootSnapshotSubvolumePath()
 {
+    # local
+    local active_volume_root_subvolume_path
+
+    active_volume_root_subvolume_path=`getActiveVolumeRootSubvolumePath`\
+        || return $?
+
+    getSubvolumeSnapshotPath "$active_volume_root_subvolume_path" || return $?
+
+    return 0
+}
+
+# Determine an appropriate (standardized) path for a snapshot created from the
+# provided subvolume.
+getSubvolumeSnapshotPath()
+{
+    # required
+    local base_subvolume_path
+
     testVariableDefinition SUBVOLUME_NAME_SNAPSHOT || return $?
 
-    active_volume_path=`getActiveVolumePath` || return $?
+    base_subvolume_path=$1
 
-    echo "$active_volume_path/$SUBVOLUME_NAME_SNAPSHOT"
+    test x"$base_subvolume_path" = x \
+        && { echo "Base subvolume path required" >&2 ; return 1 ; }
+
+    echo "$base_subvolume_path$SUBVOLUME_NAME_SNAPSHOT"
 
     return 0
 }
