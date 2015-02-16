@@ -1105,12 +1105,6 @@ if test x"$should_copy" = x1; then
             || echo "RUN_ENV_PLATFORM_PATH=\"$RUN_ENV_PLATFORM_PATH\"" >>"$path_environment" \
             || fail "Unable to update the environment file: \"$path_environment\""
 
-        # add the running platform name to the system's environment variables
-        grep "^RUN_ENV_PLATFORM_NAME=" "$path_environment" 1>/dev/null 2>&1 \
-            || echo "### DEPRECATED ###
-RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
-            || fail "Unable to update the environment file: \"$path_environment\""
-
     else
 
         fail "Unable to locate the environment file: \"$path_environment\""
@@ -1123,11 +1117,6 @@ RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
     chmod u+w "$path_sudoers"
     echo '
 Defaults env_keep += "RUN_ENV_PLATFORM_PATH"' \
-        >>"$path_sudoers" \
-        || fail "Unable to update the sudoers file: \"$path_sudoers\""
-    echo '
-### DEPRECATED ###
-Defaults env_keep += "RUN_ENV_PLATFORM_NAME"' \
         >>"$path_sudoers" \
         || fail "Unable to update the sudoers file: \"$path_sudoers\""
     chmod u-w "$path_sudoers"
