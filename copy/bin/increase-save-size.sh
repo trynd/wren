@@ -45,7 +45,7 @@ test x"${RUN_ENV_PLATFORM_PATH}" = x \
 
 
 # load platform environment
-. "${RUN_ENV_PLATFORM_PATH}/platform-env" \
+. "${RUN_ENV_PLATFORM_PATH}/lib/platform-env" \
     || { echo "Could not load platform environment - exiting..." >&2 ; exit 1 ; }
 
 

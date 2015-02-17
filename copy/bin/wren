@@ -39,11 +39,11 @@ unset IFS
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 # ensure platform name is defined
-test x"$RUN_ENV_PLATFORM_PATH" = x \
+test x"${RUN_ENV_PLATFORM_PATH}" = x \
     && { echo "Could not determine platform environment path - exiting..." >&2 ; exit 1 ; }
 
 # load platform environment
-. "$RUN_ENV_PLATFORM_PATH/platform-env" \
+. "${RUN_ENV_PLATFORM_PATH}/lib/platform-env" \
     || { echo "Could not load platform environment - exiting..." >&2 ; exit 1 ; }
 
 # failure function
@@ -51,7 +51,7 @@ panicExit()
 {
     test x"$1" = x \
         && echo "An error occurred - exiting..." >&2 \
-        || echo "$1 - exiting..." >&2
+        || echo "${1} - exiting..." >&2
 
     exit 1
 }
@@ -185,17 +185,17 @@ loadRunEnvConf || panicExit
 updateBootOptions || panicExit
 
 # script paths
-CMD_SAVE=$RUN_ENV_PLATFORM_PATH/save.sh
-CMD_INCREASE_SAVE_SIZE=$RUN_ENV_PLATFORM_PATH/increase-save-size.sh
-CMD_UPDATE_GRUB=$RUN_ENV_PLATFORM_PATH/update-grub.sh
+CMD_SAVE=${RUN_ENV_PLATFORM_PATH}/bin/save.sh
+CMD_INCREASE_SAVE_SIZE=${RUN_ENV_PLATFORM_PATH}/bin/increase-save-size.sh
+CMD_UPDATE_GRUB=${RUN_ENV_PLATFORM_PATH}/bin/update-grub.sh
 
 # Other paths
 testVariableDefinition MOUNT_DEVICE || panicExit
-PATH_GRUB_CONFIG=$MOUNT_DEVICE/boot/grub/grub.cfg
+PATH_GRUB_CONFIG=${MOUNT_DEVICE}/boot/grub/grub.cfg
 
 # load environment variables
 testVariableDefinition RUN_ENV_DIRECTORY || panicExit
-env_file=$RUN_ENV_DIRECTORY/env_control
+env_file=${RUN_ENV_DIRECTORY}/env_control
 SAVENAME=""
 SAVEFILE=""
 test -f "$env_file" && . "$env_file"
