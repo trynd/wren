@@ -228,10 +228,6 @@ if test x"$use_snapshot" = x1; then
     echo "Creating snapshot..."
 
 
-    # get size of active volume image
-    active_volume_image_size=`getFileSize "$active_volume_image_path"` || panicExit
-
-
     # create a snapshot of the active volume's root subvolume
       createSubvolumeSnapshot \
           "$active_volume_root_subvolume_path" \
