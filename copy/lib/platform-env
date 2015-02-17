@@ -65,8 +65,9 @@ RUN_ENV_DIRECTORY_TMP=/tmp/$RUN_ENV_PLATFORM_NAME
 
 # Determine and define command paths.
 CMD_BTRFS=`which btrfs` || CMD_BTRFS=btrfs
-CMD_STAT=`which stat` || CMD_STAT=stat
+CMD_DU=`which du` || CMD_DU=du
 CMD_SORT=`which sort` || CMD_SORT=sort
+CMD_STAT=`which stat` || CMD_STAT=stat
 CMD_SWAPON=`which swapon` || CMD_SWAPON=swapon
 CMD_SWAPOFF=`which swapoff` || CMD_SWAPOFF=swapoff
 
@@ -802,7 +803,7 @@ getDiskUsage()
     # local
     local result
 
-    result=`du -B1 -sx "$1"` || return $?
+    result=`$CMD_DU -B1 -sx "$1"` || return $?
     result=`echo "$result" | sed -e 's/^[[:space:]]*//'` || return $?
     result=`echo "$result" | sed -e 's/[[:space:]]\+/ /g'` || return $?
     result=`echo "$result" | cut -d' ' -f1` || return $?
