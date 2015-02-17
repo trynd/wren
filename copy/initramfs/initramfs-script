@@ -51,7 +51,7 @@ esac
 ### END REQUIRED
 
 # these aliases should match the copy_exec binaries in initramfs-hooks
-alias stat=/usr/bin/stat
+alias du=/usr/bin/du
 alias sort=/usr/bin/sort
 alias swapon=/sbin/swapon
 alias swapoff=/sbin/swapoff
@@ -227,8 +227,8 @@ else
     image_volume_active_size=$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT
     if test -x"$image_save" != x -a -f "$image_save"; then
 
-        # get device save file size
-        device_image_save_size=`getFileSize "$image_save"` || panicExit
+        # get device save file disk usage
+        device_image_save_size=`getDiskUsage "$image_save"` || panicExit
 
         # increase size by resize tolerance to allow for expansion
         device_image_save_size=$(($device_image_save_size+$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE)) \
