@@ -318,11 +318,6 @@ case "$command" in
                         || device_mounted=0
                 esac
 
-                # add newline for "all"
-                case "$option" in '' | all )
-                    echo
-                esac
-
                 # platform
                 case "$option" in platform | all | '' )
                     # display platform's display name, real name, and version
@@ -416,11 +411,6 @@ case "$command" in
                             done
                         fi
                     fi
-                esac
-
-                # add newline for "all"
-                case "$option" in '' | all )
-                    echo
                 esac
                 ;;
                 
