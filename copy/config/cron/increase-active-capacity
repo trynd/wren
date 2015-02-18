@@ -1,0 +1,2 @@
+*/1 * * * * root /usr/sbin/wren +active --check >/dev/null 2>&1 && /usr/sbin/wren +active >/dev/null 2>&1
+*/1 * * * * root sleep 30 && /usr/sbin/wren +active --check >/dev/null 2>&1 && /usr/sbin/wren +active >/dev/null 2>&1

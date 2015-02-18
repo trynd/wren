@@ -983,7 +983,7 @@ if test x"$should_skel" = x1; then
             # replace home directory with skel directory
             if test -d "$path_dir_tmp/$name_dir_union/${path_dir_home#/}"; then
                 chroot "$path_dir_tmp/$name_dir_union" rm -rf "$path_dir_home" \
-                    && chroot "$path_dir_tmp/$name_dir_union" cp -Rpf "/etc/skel" "$path_dir_home" \
+                    && chroot "$path_dir_tmp/$name_dir_union" cp -Rf "/etc/skel" "$path_dir_home" \
                     || fail "Unable to replace $path_dir_home with /etc/skel"
 
                 # change home directory owership
@@ -1040,10 +1040,10 @@ if test x"$should_copy" = x1; then
                     mkdir -p "`dirname "$path_to"`" \
                         || fail "Unable to create parent directory for: \"$path_to\""
                     if test -d "$path_from"; then
-                        cp -Rpf "$path_from" "$path_to" \
+                        cp -Rf "$path_from" "$path_to" \
                             || fail "Unable to copy source directory \"$i\" to \"$path_to\""
                     else
-                        cp -pf "$path_from" "$path_to" \
+                        cp -f "$path_from" "$path_to" \
                             || fail "Unable to copy source file \"$i\" to \"$path_to\""
                     fi
                 else
@@ -1251,7 +1251,7 @@ if test x"$should_export" = x1; then
         && path_img_kernel=`echo "$path_img_kernel" | sort --version-sort --reverse` \
         && path_img_kernel=`echo "$path_img_kernel" | head -n1` \
         || fail "Unable to determine kernel image file path"
-    cp -p "$path_img_kernel" "$path_dir_destination/$(basename "$path_img_kernel")" \
+    cp -f "$path_img_kernel" "$path_dir_destination/$(basename "$path_img_kernel")" \
         || fail "Unable to copy kernel image to destination"
 
     # copy newest initramfs image
@@ -1260,7 +1260,7 @@ if test x"$should_export" = x1; then
         && path_img_initrd=`echo "$path_img_initrd" | sort --version-sort --reverse` \
         && path_img_initrd=`echo "$path_img_initrd" | head -n1` \
         || fail "Unable to determine initramfs image file path"
-    cp -p "$path_img_initrd" "$path_dir_destination/$(basename "$path_img_initrd")" \
+    cp -f "$path_img_initrd" "$path_dir_destination/$(basename "$path_img_initrd")" \
         || fail "Unable to copy initramfs image to destination"
 fi
 
