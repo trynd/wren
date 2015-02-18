@@ -75,21 +75,64 @@ SYNOPSIS
     $APP_NAME <-h|--help>
     $APP_NAME <COMMAND> [SUBCOMMAND|OPTION] [-v]
 
-    $APP_NAME +active
-    $APP_NAME get <variable>
+    $APP_NAME +active [BYTE_COUNT] [--check|--force] [-v]
+    $APP_NAME get <VARIABLE>
     $APP_NAME grub <generate|show|write [-v]>
     $APP_NAME list [all]
-    $APP_NAME save [savename=<save_name>|savefile=</path/to/file>] [-v]
-    $APP_NAME set <variable> <value>
+    $APP_NAME save [savename=<SAVE_NAME>|savefile=</PATH/TO/FILE>] [-v]
+    $APP_NAME set <VARIABLE> <VALUE>
     $APP_NAME status [all|device|platform|savefile|savename|savenames]
-    $APP_NAME unset <variable>
+    $APP_NAME unset <VARIABLE>
 
 OPTIONS
 
     -h,--help   Display this usage information and exit.
 
-    +active     Allot additional RAM to increase the active storage
-                capacity.
+    +active     Allot additional memory to increase the platform's active
+                storage capacity.
+                
+                Can also be used to check if an increase is \"necessary\"
+                and/or \"safe\".
+
+                    \"Necessary\" means the stored data has reached the
+                    platform's active resize tolerance and an increase is
+                    recommended.
+
+                    \"Safe\" refers to whether there is enough free RAM/Swap
+                    to fully support an increase. An increase requires little
+                    additional memory up front, so is usually technically
+                    safe, but the \"safe\" value is based on whether there is
+                    enough space to make full use of the additional capacity
+                    without affecting current RAM allotments.
+
+                Accepts an optional number (in bytes) by which to expand the
+                active storage capacity. If no BYTE_COUNT is provided, the
+                platform's default increment is used.
+
+                Accepts the following additional options:
+
+                    --check     Check if an increase is safe and necessary.
+
+                                Use this in combination with a BYTE_COUNT to
+                                test the \"safe\" status of a specific size
+                                increment.
+                                
+                                Returns a binary mask exit code:
+
+                                    0 = safe and necessary
+                                    2 = not safe
+                                    4 = not necessary
+                                    6 = not safe or necessary
+
+                                Add \"-v\" for a detailed explanation.
+
+                    --force     Perform the increase even if there is not
+                                enough RAM available.
+
+                                Has no effect if \"--check\" is used.
+
+                    -v          Verbose output.
+
 
     get         Retrieve a stored variable value. Requires a variable name.
 
@@ -213,6 +256,33 @@ SAVEFILE=\"$SAVEFILE\""
     return 0
 }
 
+# converts bytes to human readable format
+bytesToHuman()
+{
+    # required
+    local byte_count
+
+    # local
+    local size
+    local suffix
+
+    suffix=B
+
+    byte_count=${1:-0}
+    while test "${byte_count%%.*}" -ge 1024 -a "$suffix" != 'G'; do
+        byte_count=$(echo "scale=10; ${byte_count} / 1024" | bc)
+        case "$suffix" in
+            B ) suffix=K ;;
+            K ) suffix=M ;;
+            M ) suffix=G ;;
+        esac
+    done
+
+    byte_count=$(echo "scale=1; ${byte_count} / 1" | bc)
+
+    echo "${byte_count}${suffix}"
+}
+
 ###
 ### END CONFIG
 ###
@@ -318,13 +388,15 @@ case "$command" in
                         || device_mounted=0
                 esac
 
+                format_label='%-11s'
+
                 # platform
                 case "$option" in platform | all | '' )
                     # display platform's display name, real name, and version
                     testVariableDefinition RUN_ENV_PLATFORM_NAME || panicExit
                     testVariableDefinition RUN_ENV_PLATFORM_VERSION || panicExit
                     testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME || panicExit
-                    test -z "$option" -o "$option" = all && printf 'platform:  '
+                    test -z "$option" -o "$option" = all && printf "$format_label" "platform:"
                     echo "$RUN_ENV_PLATFORM_DISPLAY_NAME ($RUN_ENV_PLATFORM_NAME-$RUN_ENV_PLATFORM_VERSION)"
                 esac
 
@@ -339,13 +411,13 @@ case "$command" in
                     fi
                     if test "$device_mounted" = 0 -o -z "$device"; then
                         # display not mounted message
-                        test -z "$option" -o "$option" = all && printf 'device:    '
+                        test -z "$option" -o "$option" = all && printf "$format_label" "device:"
                         echo "<not mounted>"
                     else
                         # follow any symbolic links to get the real device path
                         device=$(readlink -m "$device") || panicExit
                         # display device path
-                        test -z "$option" -o "$option" = all && printf 'device:    '
+                        test -z "$option" -o "$option" = all && printf "$format_label" "device:"
                         echo "$device"
                     fi
                 esac
@@ -355,7 +427,7 @@ case "$command" in
                     # only show a value if the device is mounted and a specific
                     # save file is not designated
                     if test "$device_mounted" = 1 -a -z "$SAVEFILE"; then
-                        test -z "$option" -o "$option" = all && printf 'savename:  '
+                        test -z "$option" -o "$option" = all && printf "$format_label" "savename:"
                         # select the appropriate save name from (in order):
                         # set savename, boot option, platform default
                         if test -n "$SAVENAME"; then
@@ -372,7 +444,7 @@ case "$command" in
                 case "$option" in savefile | all | '' )
                     if test -n "$SAVEFILE"; then
                         # always display if savefile has been set
-                        test -z "$option" -o "$option" = all && printf 'savefile:  '
+                        test -z "$option" -o "$option" = all && printf "$format_label" "savefile:"
                         echo "$SAVEFILE"
                     elif test "$device_mounted" = 1; then
                         # otherwise, if the device is mounted,
@@ -382,7 +454,7 @@ case "$command" in
                         test -z "$savename" && savename=$PLATFORM_DEFAULT_SAVE
                         test -z "$savename" \
                             && panicExit "Unable to determine an appropriate savename"
-                        test -z "$option" -o "$option" = all && printf 'savefile:  '
+                        test -z "$option" -o "$option" = all && printf "$format_label" "savefile:"
                         echo "$(getSaveImagePath "$savename")" || panicExit
                     fi
                 esac
@@ -396,14 +468,14 @@ case "$command" in
                         if test -n "$dir_saves" -a -d "$dir_saves"; then
                             saves=$(getAbsoluteDirectoryList "$dir_saves") \
                                 || panicExit
-                            test -z "$option" -o "$option" = all && printf 'savenames: '
+                            test -z "$option" -o "$option" = all && printf "$format_label" "savenames:"
                             first=1
                             echo "$saves" | while IFS= read -r i; do
                                 # display the names of child directories
                                 if test -d "$i"; then
                                     savename=$(basename "$i") || panicExit
                                     if test "$first" = 0; then
-                                        test -z "$option" -o "$option" = all && printf '           '
+                                        test -z "$option" -o "$option" = all && printf "$format_label" ""
                                     fi
                                     echo "$savename"
                                     first=0
@@ -480,7 +552,137 @@ case "$command" in
     #
     # +active - alot additional RAM to increase the active storage capacity
     #
-    +active )   $CMD_INCREASE_SAVE_SIZE || panicExit ;;
+    +active )   testVariableDefinition MOUNT_SAVE || panicExit
+                testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT || panicExit
+                testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE || panicExit
+
+                # verbose prefixes
+                PREFIX_ACTIVE_FREE="Active Free:"
+                PREFIX_BYTES_INCREASE="Requested Increase:"
+                PREFIX_IS_NECESSARY="Necessary:"
+                PREFIX_IS_SAFE="Safe:"
+                PREFIX_MEMORY_AFTER_ACTIVE="Memory Unallocated:"
+                PREFIX_MEMORY_FREE="Memory Free:"
+                PREFIX_RESIZE_TOLERANCE="Resize Tolerance:"
+
+                # clear command from arguments
+                shift
+
+                # parse options
+                is_check=0
+                is_force=0
+                is_verbose=0
+                bytes_increase=$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT
+                for i in "$@"; do
+                    case "$i" in
+                        --check )   is_check=1 ;;
+                        --force )   is_force=1 ;;
+                        -v )        is_verbose=1 ;;
+
+                        * )         if test "$(echo "$i" | sed 's/[^0-9]//')" = "$i"; then
+                                        bytes_increase=$i
+                                    else
+                                        panicExit "Unknown \"+active\" option: $i"
+                                    fi
+                                    ;;
+                    esac
+                done
+
+                # sync before testing filesystems
+                sync || panicExit
+
+                # check amount of free memory (including swap)
+                memory_free=$(free -bt | tail -n1 | tr -s ' ' | cut -d' ' -f4) || panicExit
+
+                # check if needs increase
+                is_necessary=0
+                active_free=$(df -B1 "$MOUNT_SAVE" | tail -n1 | tr -s ' ' | cut -d' ' -f4) || panicExit
+                test "$active_free" -lt "$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE" \
+                    && is_necessary=1
+
+                # check if safe for increase
+                is_safe=0
+                memory_after_active=$(($memory_free - $active_free)) || panicExit
+                test "$memory_after_active" -lt 0 && memory_after_active=0
+                test "$memory_after_active" -gt "$bytes_increase" \
+                    && is_safe=1
+
+                # display status
+                if test x"$is_verbose" = x1; then
+
+                    format_string='%-21s%7s\n'
+                    format_number='%-21s%7s (%s)\n'
+
+                    # resize tolerance
+                    printf "$format_number" "$PREFIX_RESIZE_TOLERANCE" \
+                        "$(bytesToHuman "$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE")" \
+                        "$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE" \
+                        || panicExit
+
+                    # active free
+                    printf "$format_number" "$PREFIX_ACTIVE_FREE" \
+                        "$(bytesToHuman "$active_free")" \
+                        "$active_free" \
+                        || panicExit
+
+                    # memory free
+                    printf "$format_number" "$PREFIX_MEMORY_FREE" \
+                        "$(bytesToHuman "$memory_free")" \
+                        "$memory_free" \
+                        || panicExit
+
+                    # memory after active
+                    printf "$format_number" "$PREFIX_MEMORY_AFTER_ACTIVE" \
+                        "$(bytesToHuman "$memory_after_active")" \
+                        "$memory_after_active" \
+                        || panicExit
+
+                    # bytes increase
+                    printf "$format_number" "$PREFIX_BYTES_INCREASE" \
+                        "$(bytesToHuman "$bytes_increase")" \
+                        "$bytes_increase" \
+                        || panicExit
+                fi
+
+                # display necessary / safe
+                if test x"$is_check" = x1 -o x"$is_verbose" = x1; then
+
+                    format_string=${format_string:-'%-12s%s\n'}
+
+                    # is necessary
+                    printf "$format_string" "$PREFIX_IS_NECESSARY" \
+                        "$(test x"$is_necessary" = x1 && echo Yes || echo No)" \
+                        || panicExit
+
+                    # is safe
+                    printf "$format_string" "${PREFIX_IS_SAFE}" \
+                        "$(test x"$is_safe" = x1 && echo Yes || echo No)" \
+                        || panicExit
+                fi
+
+                # check or perform increase
+                if test x"$is_check" = x1; then
+
+                    # result is a binary mask
+                    # error codes correspond to bits
+                    result=0
+                    test x"$is_safe" = x1      || result=$(($result+2))
+                    test x"$is_necessary" = x1 || result=$(($result+4))
+                    exit $result
+
+                else
+
+                    if test x"$is_safe" = x1 -o x"$is_force" = x1; then
+                        test x"$is_verbose" = x1 \
+                            && echo "Increasing active storage capacity"
+                        # increase active volume size
+                        increaseActiveImageAndVolumeSize "$bytes_increase" || panicExit
+                    else
+                        panicExit "Increase may be unsafe (use --force to override)"
+                    fi
+
+                fi
+                ;;
 
     #
     # grub - manage the Grub configuration (show, generate, or write)
