@@ -83,13 +83,14 @@ SYNOPSIS
     $APP_NAME set <VARIABLE> <VALUE>
     $APP_NAME status [all|device|platform|savefile|savename|savenames]
     $APP_NAME unset <VARIABLE>
+    $APP_NAME usage [all|active|device|memory] [-h|--human]
 
 OPTIONS
 
     -h,--help   Display this usage information and exit.
 
     +active     Allot additional memory to increase the platform's active
-                storage capacity.
+                storage capacity (when using active storage).
                 
                 Can also be used to check if an increase is \"necessary\"
                 and/or \"safe\".
@@ -206,8 +207,33 @@ OPTIONS
                     savenames   Show existing save names from the mounted
                                 boot device (if mounted).
 
+                    store       \"active\" or \"save\" depending on whether
+                                the save-to-ram feature was used at boot time.
+
     unset       Unassign and remove a stored variable. Requires a variable
                 name.
+
+    usage       Display memory and file system usage statistics. Shows values
+                in bytes by default. Use \"-h\" or \"--human\" for human
+                readable values.
+
+                Accepts the following optional SUBCOMMANDS:
+
+                    all         Display all values (default).
+
+                    active      Display active data storage usage (if booted
+                                with save-to-ram).
+
+                    device      Display boot device usage (if mounted).
+
+                    memory      Display memory usage. These values include
+                                combined RAM and swap. An extra \"unallocated\"
+                                field designates the amount of free memory
+                                that has not already been allocated for active
+                                data storage.
+
+                    save        Display save image usage (if booted directly
+                                from save file).
 "
 printUsage()
 {
@@ -227,6 +253,14 @@ PLATFORM_DEFAULT_SAVE=""
 loadRunEnvConf || panicExit
 updateBootOptions || panicExit
 
+# make a decision whether the system booted directly from a save image
+if test x"$BOOT_SAVE_TO_RAM" = x1; then
+    is_save_file=0
+else
+    BOOT_SAVE_TO_RAM=0
+    is_save_file=1
+fi
+
 # script paths
 CMD_SAVE=${RUN_ENV_PLATFORM_PATH}/bin/save.sh
 CMD_INCREASE_SAVE_SIZE=${RUN_ENV_PLATFORM_PATH}/bin/increase-save-size.sh
@@ -243,7 +277,14 @@ SAVENAME=""
 SAVEFILE=""
 test -f "$env_file" && . "$env_file"
 
-# writes environment variables back to the file
+###
+### END CONFIG
+###
+
+
+### Local Functions
+
+# writes environment variables back to the envfile
 writeEnvFile()
 {
     # Store control environment variables
@@ -283,9 +324,85 @@ bytesToHuman()
     echo "${byte_count}${suffix}"
 }
 
-###
-### END CONFIG
-###
+# sets system usage statistics to public variables
+setUsageStats()
+{
+    unset USAGE_DEVICE_TOTAL
+    unset USAGE_DEVICE_USED
+    unset USAGE_DEVICE_FREE
+    unset USAGE_ACTIVE_TOTAL
+    unset USAGE_ACTIVE_USED
+    unset USAGE_ACTIVE_FREE
+    unset USAGE_SAVE_TOTAL
+    unset USAGE_SAVE_USED
+    unset USAGE_SAVE_FREE
+    unset USAGE_MEMORY_TOTAL
+    unset USAGE_MEMORY_USED
+    unset USAGE_MEMORY_FREE
+    unset USAGE_MEMORY_UNALLOCATED
+
+    local disk_info
+    local active_info
+    local memory_info
+    local a
+    local b
+    local c
+
+    # boot disk information
+    testVariableDefinition MOUNT_DEVICE || panicExit
+    if testIsMounted "$MOUNT_DEVICE"; then
+        disk_info=$(df -B1 "$MOUNT_DEVICE" | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+        if test -n "$disk_info"; then
+            if IFS=' ' read a b c; then
+                USAGE_DEVICE_TOTAL=$a
+                USAGE_DEVICE_USED=$b
+                USAGE_DEVICE_FREE=$c
+            fi <<EOF
+$disk_info
+EOF
+        fi
+    fi
+
+    # active/save storage information
+    active_info=$(df -B1 "$MOUNT_SAVE" | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+    if test -n "$active_info"; then
+        if IFS=' ' read a b c; then
+            if test "$is_save_file" = 0; then
+                USAGE_ACTIVE_TOTAL=$a
+                USAGE_ACTIVE_USED=$b
+                USAGE_ACTIVE_FREE=$c
+            else
+                USAGE_SAVE_TOTAL=$a
+                USAGE_SAVE_USED=$b
+                USAGE_SAVE_FREE=$c
+            fi
+        fi <<EOF
+$active_info
+EOF
+    fi
+
+    # memory (ram + swap) information
+    memory_info=$(free -bt | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+    if test -n "$memory_info"; then
+        if IFS=' ' read a b c; then
+            USAGE_MEMORY_TOTAL=$a
+            USAGE_MEMORY_USED=$b
+            USAGE_MEMORY_FREE=$c
+        fi <<EOF
+$memory_info
+EOF
+    fi
+
+    USAGE_MEMORY_UNALLOCATED=0
+    if test -n "$USAGE_MEMORY_FREE"; then
+        USAGE_MEMORY_UNALLOCATED=$(($USAGE_MEMORY_FREE - ${USAGE_ACTIVE_FREE:-0}))
+        test "$USAGE_MEMORY_UNALLOCATED" -lt 0 \
+            && USAGE_MEMORY_UNALLOCATED=0
+    fi
+
+    return 0
+}
+
 
 # parse options
 command="$1"
@@ -332,7 +449,7 @@ case "$command" in
                                     option=savefile
                                     ;;
                     savename | \
-                    savefile )      value="$3"
+                    savefile )      value=$3
                                     ;;
                     '' )            panicExit "Option \"set\" requires a variable and a value" ;;
                     * )             panicExit "Unknown \"set\" option: $option" ;;
@@ -375,12 +492,15 @@ case "$command" in
     #
     status )    # check for invalid options
                 case "$option" in
-                    '' | all | platform | device | savename | savefile | savenames ) ;;
+                    '' | all | platform | device | store | savename | savefile | savenames ) ;;
                     * ) panicExit "Unknown \"status\" option: $option" ;;
                 esac
 
+                # no option is the same as "all"
+                test -z "$option" && option=all
+
                 # determine if device is mounted
-                case "$option" in '' | all | device | savename | savefile | savenames )
+                case "$option" in all | device | savename | savefile | savenames )
                     testVariableDefinition MOUNT_DEVICE \
                         || panicExit
                     testIsMounted "$MOUNT_DEVICE" \
@@ -391,17 +511,17 @@ case "$command" in
                 format_label='%-11s'
 
                 # platform
-                case "$option" in platform | all | '' )
+                case "$option" in platform | all )
                     # display platform's display name, real name, and version
                     testVariableDefinition RUN_ENV_PLATFORM_NAME || panicExit
                     testVariableDefinition RUN_ENV_PLATFORM_VERSION || panicExit
                     testVariableDefinition RUN_ENV_PLATFORM_DISPLAY_NAME || panicExit
-                    test -z "$option" -o "$option" = all && printf "$format_label" "platform:"
+                    test "$option" = all && printf "$format_label" "platform:"
                     echo "$RUN_ENV_PLATFORM_DISPLAY_NAME ($RUN_ENV_PLATFORM_NAME-$RUN_ENV_PLATFORM_VERSION)"
                 esac
 
                 # device
-                case "$option" in device | all | '' )
+                case "$option" in device | all )
                     device=""
                     if test "$device_mounted" = 1; then
                         # get device path from expected mount path
@@ -411,23 +531,33 @@ case "$command" in
                     fi
                     if test "$device_mounted" = 0 -o -z "$device"; then
                         # display not mounted message
-                        test -z "$option" -o "$option" = all && printf "$format_label" "device:"
+                        test "$option" = all && printf "$format_label" "device:"
                         echo "<not mounted>"
                     else
                         # follow any symbolic links to get the real device path
                         device=$(readlink -m "$device") || panicExit
                         # display device path
-                        test -z "$option" -o "$option" = all && printf "$format_label" "device:"
+                        test "$option" = all && printf "$format_label" "device:"
                         echo "$device"
                     fi
                 esac
 
+                # store
+                case "$option" in store | all )
+                    test "$option" = all && printf "$format_label" "store:"
+                    if test "$is_save_file" = 0; then
+                        echo "active"
+                    else
+                        echo "save"
+                    fi
+                esac
+
                 # savename
-                case "$option" in savename | all | '' )
+                case "$option" in savename | all )
                     # only show a value if the device is mounted and a specific
                     # save file is not designated
                     if test "$device_mounted" = 1 -a -z "$SAVEFILE"; then
-                        test -z "$option" -o "$option" = all && printf "$format_label" "savename:"
+                        test "$option" = all && printf "$format_label" "savename:"
                         # select the appropriate save name from (in order):
                         # set savename, boot option, platform default
                         if test -n "$SAVENAME"; then
@@ -441,10 +571,10 @@ case "$command" in
                 esac
 
                 # savefile
-                case "$option" in savefile | all | '' )
+                case "$option" in savefile | all )
                     if test -n "$SAVEFILE"; then
                         # always display if savefile has been set
-                        test -z "$option" -o "$option" = all && printf "$format_label" "savefile:"
+                        test "$option" = all && printf "$format_label" "savefile:"
                         echo "$SAVEFILE"
                     elif test "$device_mounted" = 1; then
                         # otherwise, if the device is mounted,
@@ -454,13 +584,13 @@ case "$command" in
                         test -z "$savename" && savename=$PLATFORM_DEFAULT_SAVE
                         test -z "$savename" \
                             && panicExit "Unable to determine an appropriate savename"
-                        test -z "$option" -o "$option" = all && printf "$format_label" "savefile:"
+                        test "$option" = all && printf "$format_label" "savefile:"
                         echo "$(getSaveImagePath "$savename")" || panicExit
                     fi
                 esac
 
                 # savenames
-                case "$option" in savenames | all | '' )
+                case "$option" in savenames | all )
                     if test "$device_mounted" = 1; then
                         # if the device is mounted, iterate over the children
                         # of the device's saves storage directory
@@ -468,14 +598,14 @@ case "$command" in
                         if test -n "$dir_saves" -a -d "$dir_saves"; then
                             saves=$(getAbsoluteDirectoryList "$dir_saves") \
                                 || panicExit
-                            test -z "$option" -o "$option" = all && printf "$format_label" "savenames:"
+                            test "$option" = all && printf "$format_label" "savenames:"
                             first=1
                             echo "$saves" | while IFS= read -r i; do
                                 # display the names of child directories
                                 if test -d "$i"; then
                                     savename=$(basename "$i") || panicExit
                                     if test "$first" = 0; then
-                                        test -z "$option" -o "$option" = all && printf "$format_label" ""
+                                        test "$option" = all && printf "$format_label" ""
                                     fi
                                     echo "$savename"
                                     first=0
@@ -483,6 +613,128 @@ case "$command" in
                             done
                         fi
                     fi
+                esac
+                ;;
+
+    #
+    # usage - display file system and memory usage
+    #
+    usage )     # check for modifier
+                modifier=$3
+                case "$option" in -h | --human )
+                    modifier=$option
+                    option=$3
+                esac
+
+                # no option is the same as "all"
+                test -z "$option" && option=all
+
+                # check for invalid options
+                case "$option" in
+                    all | memory | active | save | device ) ;;
+                    * ) panicExit "Unknown \"usage\" option: $option" ;;
+                esac
+
+                # load system usage information
+                setUsageStats || panicExit
+
+                # adjust active/save values
+                if test "$is_save_file" = 0; then
+                    USAGE_SAVE_TOTAL=-
+                    USAGE_SAVE_USED=-
+                    USAGE_SAVE_FREE=-
+                else
+                    USAGE_ACTIVE_TOTAL=-
+                    USAGE_ACTIVE_USED=-
+                    USAGE_ACTIVE_FREE=-
+                fi
+
+                # adjust device values
+                testVariableDefinition MOUNT_DEVICE || panicExit
+                device_mounted=0
+                if testIsMounted "$MOUNT_DEVICE"; then
+                    device_mounted=1
+                else
+                    USAGE_DEVICE_TOTAL=-
+                    USAGE_DEVICE_USED=-
+                    USAGE_DEVICE_FREE=-
+                fi
+
+                # default table format
+                usage_format='%-8s %15s %15s %15s %15s\n'
+
+                # check for modifiers
+                case "$modifier" in -h | -human )
+                    usage_format='%-8s %7s %7s %7s %12s\n'
+                    USAGE_MEMORY_TOTAL=$(bytesToHuman "$USAGE_MEMORY_TOTAL")
+                    USAGE_MEMORY_USED=$(bytesToHuman "$USAGE_MEMORY_USED")
+                    USAGE_MEMORY_FREE=$(bytesToHuman "$USAGE_MEMORY_FREE")
+                    USAGE_MEMORY_UNALLOCATED=$(bytesToHuman "$USAGE_MEMORY_UNALLOCATED")
+                    if test "$is_save_file" = 0; then
+                        USAGE_ACTIVE_TOTAL=$(bytesToHuman "$USAGE_ACTIVE_TOTAL")
+                        USAGE_ACTIVE_USED=$(bytesToHuman "$USAGE_ACTIVE_USED")
+                        USAGE_ACTIVE_FREE=$(bytesToHuman "$USAGE_ACTIVE_FREE")
+                    else
+                        USAGE_SAVE_TOTAL=$(bytesToHuman "$USAGE_SAVE_TOTAL")
+                        USAGE_SAVE_USED=$(bytesToHuman "$USAGE_SAVE_USED")
+                        USAGE_SAVE_FREE=$(bytesToHuman "$USAGE_SAVE_FREE")
+                    fi
+                    if test "$device_mounted" = 1; then
+                        USAGE_DEVICE_TOTAL=$(bytesToHuman "$USAGE_DEVICE_TOTAL")
+                        USAGE_DEVICE_USED=$(bytesToHuman "$USAGE_DEVICE_USED")
+                        USAGE_DEVICE_FREE=$(bytesToHuman "$USAGE_DEVICE_FREE")
+                    fi
+                esac
+
+                # display usage table
+                unallocated_header=''
+                case "$option" in memory | all )
+                    test "$is_save_file" = 0 \
+                        && unallocated_header='unallocated'
+                esac
+                printf "$usage_format" '' 'total' 'used' 'free' "$unallocated_header"
+
+                # memory
+                case "$option" in memory | all )
+                    test "$is_save_file" = 0 \
+                        && unallocated=$USAGE_MEMORY_UNALLOCATED \
+                        || unallocated=''
+                    printf "$usage_format" 'memory:' \
+                        "$USAGE_MEMORY_TOTAL" \
+                        "$USAGE_MEMORY_USED" \
+                        "$USAGE_MEMORY_FREE" \
+                        "$unallocated"
+                esac
+
+                # active
+                case "$option" in active | all )
+                    if test "$option" = active -o "$is_save_file" = 0; then
+                        printf "$usage_format" 'active:' \
+                            "$USAGE_ACTIVE_TOTAL" \
+                            "$USAGE_ACTIVE_USED" \
+                            "$USAGE_ACTIVE_FREE" \
+                            ""
+                    fi
+                esac
+
+                # save
+                case "$option" in save | all )
+                    if test "$option" = save -o "$is_save_file" != 0; then
+                        printf "$usage_format" 'save:' \
+                            "$USAGE_SAVE_TOTAL" \
+                            "$USAGE_SAVE_USED" \
+                            "$USAGE_SAVE_FREE" \
+                            ""
+                    fi
+                esac
+
+                # device
+                case "$option" in device | all )
+                    printf "$usage_format" 'device:' \
+                        "$USAGE_DEVICE_TOTAL" \
+                        "$USAGE_DEVICE_USED" \
+                        "$USAGE_DEVICE_FREE" \
+                        ""
                 esac
                 ;;
                 
@@ -493,10 +745,10 @@ case "$command" in
                 savefile=""
 
                 # check for verbose modifier
-                modifier="$3"
+                modifier=$3
                 test "$option" = "-v" \
                     && modifier=$option \
-                    && option=""
+                    && option=$3
 
                 # determine savefile or savename
                 if test -n "$option"; then
@@ -552,7 +804,11 @@ case "$command" in
     #
     # +active - alot additional RAM to increase the active storage capacity
     #
-    +active )   testVariableDefinition MOUNT_SAVE || panicExit
+    +active )   # only valid when using active storage
+                test "$is_save_file" != 0 \
+                    && panicExit "Option \"+active\" is only valid when using active storage"
+
+                testVariableDefinition MOUNT_SAVE || panicExit
                 testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT || panicExit
                 testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE || panicExit
 
@@ -561,7 +817,7 @@ case "$command" in
                 PREFIX_BYTES_INCREASE="Requested Increase:"
                 PREFIX_IS_NECESSARY="Necessary:"
                 PREFIX_IS_SAFE="Safe:"
-                PREFIX_MEMORY_AFTER_ACTIVE="Memory Unallocated:"
+                PREFIX_MEMORY_UNALLOCATED="Memory Unallocated:"
                 PREFIX_MEMORY_FREE="Memory Free:"
                 PREFIX_RESIZE_TOLERANCE="Resize Tolerance:"
 
@@ -591,20 +847,17 @@ case "$command" in
                 # sync before testing filesystems
                 sync || panicExit
 
-                # check amount of free memory (including swap)
-                memory_free=$(free -bt | tail -n1 | tr -s ' ' | cut -d' ' -f4) || panicExit
+                # read system usage information
+                setUsageStats
 
                 # check if needs increase
                 is_necessary=0
-                active_free=$(df -B1 "$MOUNT_SAVE" | tail -n1 | tr -s ' ' | cut -d' ' -f4) || panicExit
-                test "$active_free" -lt "$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE" \
+                test "$USAGE_ACTIVE_FREE" -lt "$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE" \
                     && is_necessary=1
 
                 # check if safe for increase
                 is_safe=0
-                memory_after_active=$(($memory_free - $active_free)) || panicExit
-                test "$memory_after_active" -lt 0 && memory_after_active=0
-                test "$memory_after_active" -gt "$bytes_increase" \
+                test "$USAGE_MEMORY_UNALLOCATED" -gt "$bytes_increase" \
                     && is_safe=1
 
                 # display status
@@ -621,20 +874,20 @@ case "$command" in
 
                     # active free
                     printf "$format_number" "$PREFIX_ACTIVE_FREE" \
-                        "$(bytesToHuman "$active_free")" \
-                        "$active_free" \
+                        "$(bytesToHuman "$USAGE_ACTIVE_FREE")" \
+                        "$USAGE_ACTIVE_FREE" \
                         || panicExit
 
                     # memory free
                     printf "$format_number" "$PREFIX_MEMORY_FREE" \
-                        "$(bytesToHuman "$memory_free")" \
-                        "$memory_free" \
+                        "$(bytesToHuman "$USAGE_MEMORY_FREE")" \
+                        "$USAGE_MEMORY_FREE" \
                         || panicExit
 
                     # memory after active
-                    printf "$format_number" "$PREFIX_MEMORY_AFTER_ACTIVE" \
-                        "$(bytesToHuman "$memory_after_active")" \
-                        "$memory_after_active" \
+                    printf "$format_number" "$PREFIX_MEMORY_UNALLOCATED" \
+                        "$(bytesToHuman "$USAGE_MEMORY_UNALLOCATED")" \
+                        "$USAGE_MEMORY_UNALLOCATED" \
                         || panicExit
 
                     # bytes increase
@@ -692,10 +945,10 @@ case "$command" in
                     || panicExit "Boot device is not mounted"
 
                 # check for verbose modifier
-                modifier="$3"
+                modifier=$3
                 test "$option" = "-v" \
                     && modifier=$option \
-                    && option=""
+                    && option=$3
 
                 # perform selected option
                 case "$option" in
