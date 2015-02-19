@@ -66,8 +66,8 @@ fail()
 }
 
 # load platform environment
-test x"$RUN_ENV_PLATFORM_PATH" != x \
-    && . "$RUN_ENV_PLATFORM_PATH/platform-env" \
+test x"${RUN_ENV_PLATFORM_PATH}" != x \
+    && . "${RUN_ENV_PLATFORM_PATH}/lib/platform-env" \
     && loadRunEnvConf \
     && updateBootOptions \
     || fail "Unable to load platform environment"

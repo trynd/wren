@@ -92,7 +92,7 @@ STEP 3 - Build Wren Images (Boot from ROOT DISK)
 * Remove all git related files from the WREN SOURCE
 * cd to the WREN SOURCE install/ directory
 * Download required builder packages from apt into WREN SOURCE install/
-  * apt-get download squashfs-tools watershed lvm2
+  * apt-get download squashfs-tools btrfs-tools
 * Use dpkg to install squashfs-tools package (if it's not already installed)
 * cd to the WREN SOURCE directory
 * Create a boot/conf directory on the WREN PARTITION
