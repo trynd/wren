@@ -57,9 +57,9 @@ for i in /usr/sbin /usr/bin /sbin /bin ; do
         || mkdir -p "${DESTDIR}$i"
 done
 
-# replace the 'stat' binary
-rm -f "${DESTDIR}/usr/bin/stat"
-copy_exec /usr/bin/stat /usr/bin/
+# replace the 'du' binary
+rm -f "${DESTDIR}/usr/bin/du"
+copy_exec /usr/bin/du /usr/bin/
 
 # replace the 'sort' binary
 rm -f "${DESTDIR}/usr/bin/sort"

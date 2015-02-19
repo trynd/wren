@@ -15,6 +15,17 @@ Save data (entire machine states) can be saved on a per-user or per-project basi
 * Check out the [Usage Guide](https://github.com/trynd/wren/wiki/Usage) to learn more about Wren's packaged tools and boot options.
 * For details on performing system and kernel upgrades, see [Upgrading Your System](https://github.com/trynd/wren/wiki/Upgrading-Your-System).
 
+## Update Instructions
+
+If you're currently running Wren version 0.1.x, perform the following to upgrade your existing distribution instance.
+
+* Use `wrender` to build new `initrd.img-*` and `platform-*` image files and replace the existing images on the boot device in `/boot/images/` (common mount path: `/mnt/wren/00-device/boot/images/`).
+  * Custom save images should also be rebuilt and replaced.
+* Copy `conf/platform.conf` to the boot device's `/boot/conf/` directory, replacing the existing `platform.conf` instance.
+* Reboot.
+
+If you have any custom 0.1.x images in user save directories, they will continue to work with this distribution, but support for them will be removed in a future release. Those images should be individually upgraded after performing a distribution upgrade.
+
 ## Features
 
 ### Full In-Memory Mode
@@ -95,10 +106,10 @@ Under the hood, Wren consists primarily of complex shell scripts, but it utilize
 
 * initramfs / BusyBox
 * OverlayFS
-* LVM
+* Btrfs
 * udev
 
-Given its place in the startup stack, `initramfs` is a requirement at present, but the other technologies are somewhat interchangeable. For example, Wren was initially designed around AUFS, but that was dropped in favor of the lighter-weight OverlayFS. It has also been considered that, given some feature overlap, ZFS or Btrfs might some day make for a better LVM replacement.
+Given its place in the startup stack, `initramfs` is a requirement at present, but the other technologies are somewhat interchangeable. For example, Wren was initially designed around AUFS and LVM, but those were dropped in favor of the lighter-weight OverlayFS and more feature-rich Btrfs.
 
 ## Bugs
 

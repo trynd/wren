@@ -112,7 +112,7 @@ OPTIONS
 
     --prefix            OPTIONAL - Path to the directory under which the
                         platform's package directory should be installed.
-                        If this is not defined, '/etc' is assumed.
+                        If this is not defined, '/opt' is assumed.
 
     --root,-r           REQUIRED - Path to the root image to be used in the
                         chroot environment. Without this image it would be
@@ -343,9 +343,6 @@ STEP DESCRIPTIONS (IN ORDER OF BUILD STEPS)
         * Iterate through the setlist (SETLIST_SYMLINK), creating the requested
           symbolic links in the chroot (union mounted) file system.
 
-        * Add the new platform environment's name to the chroot (union mounted)
-          system's environment variables.
-
         * Add the new platform environment's install path to the chroot (union
           mounted) system's environment variables.
 
@@ -426,7 +423,7 @@ fail()
 
 pwd=`pwd`
 
-default_prefix=/etc
+default_prefix=/opt
 
 default_path_dir_tmp=/tmp/platform
 name_dir_root=1-root
@@ -836,14 +833,19 @@ echo 'CHECKING SOURCE'
 echo '---------------'
 echo
 
+# platform source file paths
+path_platform_env=$path_dir_source/copy/lib/platform-env
+path_platform_conf=$path_dir_source/copy/etc/platform.conf
+path_setlist=$path_dir_source/setlist
+
 # platform-env
 RUN_ENV_PLATFORM_PATH=""
 RUN_ENV_PLATFORM_NAME=""
-test -f "$path_dir_source/platform-env" \
-    && . "$path_dir_source/platform-env" \
+test -f "$path_platform_env" \
+    && . "$path_platform_env" \
     || fail "Unable to load required source file: \"platform-env\""
-test -f "$path_dir_source/conf/platform.conf" \
-    && . "$path_dir_source/conf/platform.conf" \
+test -f "$path_platform_conf" \
+    && . "$path_platform_conf" \
     || fail "Unable to load required source file: \"conf/platform.conf\""
 for i in \
     RUN_ENV_PLATFORM_NAME \
@@ -865,8 +867,8 @@ SETLIST_COPY=""
 SETLIST_SYMLINK=""
 SETLIST_UNINSTALL=""
 SETLIST_INSTALL=""
-test -f "$path_dir_source/setlist" \
-    && . "$path_dir_source/setlist" \
+test -f "$path_setlist" \
+    && . "$path_setlist" \
     || fail "Unable to load required source file: \"setlist\""
 test x"$SETLIST_COPY" = x \
     && fail "Required variable not defined by source files: SETLIST_COPY"
@@ -981,7 +983,7 @@ if test x"$should_skel" = x1; then
             # replace home directory with skel directory
             if test -d "$path_dir_tmp/$name_dir_union/${path_dir_home#/}"; then
                 chroot "$path_dir_tmp/$name_dir_union" rm -rf "$path_dir_home" \
-                    && chroot "$path_dir_tmp/$name_dir_union" cp -Rpf "/etc/skel" "$path_dir_home" \
+                    && chroot "$path_dir_tmp/$name_dir_union" cp -Rf "/etc/skel" "$path_dir_home" \
                     || fail "Unable to replace $path_dir_home with /etc/skel"
 
                 # change home directory owership
@@ -1038,10 +1040,10 @@ if test x"$should_copy" = x1; then
                     mkdir -p "`dirname "$path_to"`" \
                         || fail "Unable to create parent directory for: \"$path_to\""
                     if test -d "$path_from"; then
-                        cp -Rpf "$path_from" "$path_to" \
+                        cp -Rf "$path_from" "$path_to" \
                             || fail "Unable to copy source directory \"$i\" to \"$path_to\""
                     else
-                        cp -pf "$path_from" "$path_to" \
+                        cp -f "$path_from" "$path_to" \
                             || fail "Unable to copy source file \"$i\" to \"$path_to\""
                     fi
                 else
@@ -1105,12 +1107,6 @@ if test x"$should_copy" = x1; then
             || echo "RUN_ENV_PLATFORM_PATH=\"$RUN_ENV_PLATFORM_PATH\"" >>"$path_environment" \
             || fail "Unable to update the environment file: \"$path_environment\""
 
-        # add the running platform name to the system's environment variables
-        grep "^RUN_ENV_PLATFORM_NAME=" "$path_environment" 1>/dev/null 2>&1 \
-            || echo "### DEPRECATED ###
-RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
-            || fail "Unable to update the environment file: \"$path_environment\""
-
     else
 
         fail "Unable to locate the environment file: \"$path_environment\""
@@ -1123,11 +1119,6 @@ RUN_ENV_PLATFORM_NAME=\"$RUN_ENV_PLATFORM_NAME\"" >>"$path_environment" \
     chmod u+w "$path_sudoers"
     echo '
 Defaults env_keep += "RUN_ENV_PLATFORM_PATH"' \
-        >>"$path_sudoers" \
-        || fail "Unable to update the sudoers file: \"$path_sudoers\""
-    echo '
-### DEPRECATED ###
-Defaults env_keep += "RUN_ENV_PLATFORM_NAME"' \
         >>"$path_sudoers" \
         || fail "Unable to update the sudoers file: \"$path_sudoers\""
     chmod u-w "$path_sudoers"
@@ -1176,17 +1167,17 @@ if test x"$should_install" = x1; then
         mount --bind "$path_dir_source/install" "$path_dir_tmp/$name_dir_union/mnt" \
             || fail "Unable to bind package install directory to chroot environment"
         for i in $SETLIST_INSTALL; do
-            package=`echo "$path_dir_source/install/${i}_"*.deb | sort --version-sort --reverse | head -n1`
-            test x"$package" != "$path_dir_source/install/${i}_*.deb" -a -f "$package" \
+            package_path=`echo "$path_dir_source/install/${i}_"*.deb | sort --version-sort --reverse | head -n1`
+            test x"$package_path" != "$path_dir_source/install/${i}_*.deb" -a -f "$package_path" \
                 || fail "Unable to find package: \"$i\""
-            package=`basename "$package"`
+            package_name=`basename "$package_path"`
 
             echo
-            echo "Installing Package: $i ($package)"
+            echo "Installing Package: $i ($package_name)"
             echo
 
-            chroot "$path_dir_tmp/$name_dir_union" dpkg -i "/mnt/$package" \
-                || fail "Unable to install package: \"$package\""
+            chroot "$path_dir_tmp/$name_dir_union" dpkg -i "/mnt/$package_name" \
+                || fail "Unable to install package: \"$package_name\""
         done
 
         # unmount bound chroot install directory
@@ -1260,7 +1251,7 @@ if test x"$should_export" = x1; then
         && path_img_kernel=`echo "$path_img_kernel" | sort --version-sort --reverse` \
         && path_img_kernel=`echo "$path_img_kernel" | head -n1` \
         || fail "Unable to determine kernel image file path"
-    cp -p "$path_img_kernel" "$path_dir_destination/$(basename "$path_img_kernel")" \
+    cp -f "$path_img_kernel" "$path_dir_destination/$(basename "$path_img_kernel")" \
         || fail "Unable to copy kernel image to destination"
 
     # copy newest initramfs image
@@ -1269,7 +1260,7 @@ if test x"$should_export" = x1; then
         && path_img_initrd=`echo "$path_img_initrd" | sort --version-sort --reverse` \
         && path_img_initrd=`echo "$path_img_initrd" | head -n1` \
         || fail "Unable to determine initramfs image file path"
-    cp -p "$path_img_initrd" "$path_dir_destination/$(basename "$path_img_initrd")" \
+    cp -f "$path_img_initrd" "$path_dir_destination/$(basename "$path_img_initrd")" \
         || fail "Unable to copy initramfs image to destination"
 fi
 

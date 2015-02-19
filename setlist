@@ -36,38 +36,37 @@
 # Common platform run environment variables are allowed.
 # Paths should not contain spaces.
 SETLIST_COPY="
-    ${RUN_ENV_PLATFORM_PATH}                                        -
-    ${RUN_ENV_PLATFORM_PATH}/COPYRIGHT                              COPYRIGHT
-    ${RUN_ENV_PLATFORM_PATH}/LICENSE                                LICENSE
-    ${RUN_ENV_PLATFORM_PATH}/boot.conf.example                      conf/boot.conf
-    ${RUN_ENV_PLATFORM_PATH}/device.conf.example                    conf/device.conf
-    ${RUN_ENV_PLATFORM_PATH}/grub.cfg.example                       conf/grub.cfg
-    ${RUN_ENV_PLATFORM_PATH}/increase-save-size.sh                  copy/increase-save-size.sh
-    ${RUN_ENV_PLATFORM_PATH}/platform-env                           platform-env
-    ${RUN_ENV_PLATFORM_PATH}/platform.conf.example                  conf/platform.conf
-    ${RUN_ENV_PLATFORM_PATH}/wren                                   copy/wren
-    ${RUN_ENV_PLATFORM_PATH}/save.sh                                copy/save.sh
-    ${RUN_ENV_PLATFORM_PATH}/tools                                  -
-    ${RUN_ENV_PLATFORM_PATH}/tools/enable-root.sh                   tools/enable-root.sh
-    ${RUN_ENV_PLATFORM_PATH}/tools/disable-root.sh                  tools/disable-root.sh
-    ${RUN_ENV_PLATFORM_PATH}/tools/rename-user.sh                   tools/rename-user.sh
-    ${RUN_ENV_PLATFORM_PATH}/update-grub.sh                         copy/update-grub.sh
-    /etc/apt/preferences.d/no-bootloader                            copy/no-bootloader
-    /etc/apt/preferences.d/no-misc                                  copy/no-misc
-    /etc/initramfs-tools/modules                                    copy/modules
-    /etc/initramfs-tools/hooks/_platform                            copy/initramfs-hooks
-    /etc/initramfs-tools/scripts/init-bottom/_platform              copy/initramfs-script
-    /etc/initramfs-tools/scripts/platform-env                       platform-env
-    /etc/sysctl.d/99-swappiness.conf                                copy/99-swappiness.conf
-    /etc/udev/rules.d/99-dmapper-hide.rules                         copy/99-dmapper-hide.rules
-    /usr/share/initramfs-tools/hooks/_platform                      -
-    /usr/src/${RUN_ENV_PLATFORM_NAME}-${RUN_ENV_PLATFORM_VERSION}   .
+    $RUN_ENV_PLATFORM_PATH                                          -
+    $RUN_ENV_PLATFORM_PATH/COPYRIGHT                                COPYRIGHT
+    $RUN_ENV_PLATFORM_PATH/LICENSE                                  LICENSE
+    $RUN_ENV_PLATFORM_PATH/bin/increase-save-size.sh                copy/bin/increase-save-size.sh
+    $RUN_ENV_PLATFORM_PATH/bin/save.sh                              copy/bin/save.sh
+    $RUN_ENV_PLATFORM_PATH/bin/update-grub.sh                       copy/bin/update-grub.sh
+    $RUN_ENV_PLATFORM_PATH/bin/wren                                 copy/bin/wren
+    $RUN_ENV_PLATFORM_PATH/etc/boot.conf.example                    copy/etc/boot.conf
+    $RUN_ENV_PLATFORM_PATH/etc/device.conf.example                  copy/etc/device.conf
+    $RUN_ENV_PLATFORM_PATH/etc/platform.conf.example                copy/etc/platform.conf
+    $RUN_ENV_PLATFORM_PATH/grub/grub.cfg.example                    copy/grub/grub.cfg
+    $RUN_ENV_PLATFORM_PATH/lib/platform-env                         copy/lib/platform-env
+    $RUN_ENV_PLATFORM_PATH/tools/disable-root.sh                    copy/tools/disable-root.sh
+    $RUN_ENV_PLATFORM_PATH/tools/enable-root.sh                     copy/tools/enable-root.sh
+    $RUN_ENV_PLATFORM_PATH/tools/rename-user.sh                     copy/tools/rename-user.sh
+    /etc/apt/preferences.d/no-bootloader                            copy/config/apt/no-bootloader
+    /etc/apt/preferences.d/no-misc                                  copy/config/apt/no-misc
+    /etc/cron.d/$RUN_ENV_PLATFORM_NAME-increase-active-capacity     copy/config/cron/increase-active-capacity
+    /etc/initramfs-tools/hooks/_platform                            copy/initramfs/initramfs-hooks
+    /etc/initramfs-tools/modules                                    copy/initramfs/modules
+    /etc/initramfs-tools/scripts/init-bottom/_platform              copy/initramfs/initramfs-script
+    /etc/initramfs-tools/scripts/platform-env                       copy/lib/platform-env
+    /etc/sysctl.d/99-swappiness.conf                                copy/config/sys/99-swappiness.conf
+    /etc/udev/rules.d/99-dmapper-hide.rules                         copy/config/udev/99-dmapper-hide.rules
+    /usr/src/$RUN_ENV_PLATFORM_NAME-$RUN_ENV_PLATFORM_VERSION       .
 "
 
 # Columns denote To / From (destination and source, multi-space separated).
 # Paths should not contain spaces.
 SETLIST_SYMLINK="
-    /usr/sbin/wren                                                  ${RUN_ENV_PLATFORM_PATH}/wren
+    /usr/sbin/wren  $RUN_ENV_PLATFORM_PATH/bin/wren
 "
 
 # A single string of space-separated package names to be passed to
@@ -76,4 +75,4 @@ SETLIST_UNINSTALL="grub grub-common grub-pc grub2 grub2-common lilo elilo apt-xa
 
 # A single string of space-separated package names used to filter files in the
 # "install" directory to be passed to "dpkg -i" (in order) for installation.
-SETLIST_INSTALL="squashfs-tools watershed lvm2"
+SETLIST_INSTALL="squashfs-tools btrfs-tools"
