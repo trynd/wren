@@ -32,7 +32,7 @@
 
 # Define the platform name and version (no whitespace allowed).
 RUN_ENV_PLATFORM_NAME=wren
-RUN_ENV_PLATFORM_VERSION=0.1.2+btrfs
+RUN_ENV_PLATFORM_VERSION=0.2.0
 
 # Define the platform's display name if not defined externally.
 if test x"$RUN_ENV_PLATFORM_DISPLAY_NAME" = x; then
