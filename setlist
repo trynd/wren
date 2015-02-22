@@ -39,7 +39,6 @@ SETLIST_COPY="
     $RUN_ENV_PLATFORM_PATH                                          -
     $RUN_ENV_PLATFORM_PATH/COPYRIGHT                                COPYRIGHT
     $RUN_ENV_PLATFORM_PATH/LICENSE                                  LICENSE
-    $RUN_ENV_PLATFORM_PATH/bin/increase-save-size.sh                copy/bin/increase-save-size.sh
     $RUN_ENV_PLATFORM_PATH/bin/save.sh                              copy/bin/save.sh
     $RUN_ENV_PLATFORM_PATH/bin/update-grub.sh                       copy/bin/update-grub.sh
     $RUN_ENV_PLATFORM_PATH/bin/wren                                 copy/bin/wren
