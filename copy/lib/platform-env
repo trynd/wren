@@ -133,6 +133,9 @@ updateBootOptions()
     local to_ram
     local unmount
     local save
+    local swap
+    local swap_wait
+    local no_active_fs
     local i
     local param
     local boot_device
@@ -151,6 +154,7 @@ updateBootOptions()
     save=save
     swap=swap
     swap_wait=swap-wait
+    no_active_fs=no-active-fs
 
     # empty string values
     BOOT_DEVICE=''
@@ -244,6 +248,11 @@ updateBootOptions()
             # swap wait
             $swap_wait=*        )   BOOT_SWAP_WAIT=${param#${swap_wait}=}
                                     ;;
+
+            # no active fs
+            $no_active_fs=0    )   BOOT_NO_ACTIVE_FS=0 ;;
+            $no_active_fs | \
+            $no_active_fs=1    )   BOOT_NO_ACTIVE_FS=1 ;;
         esac
     done
 
