@@ -257,7 +257,7 @@ PLATFORM_DEFAULT_SAVE=""
 loadRunEnvConf || panicExit
 updateBootOptions || panicExit
 
-# make a decision whether the system booted directly from a save image
+# decide whether the system booted directly from a save image
 if test x"$BOOT_SAVE_TO_RAM" = x1; then
     is_save_file=0
 else
@@ -265,9 +265,20 @@ else
     is_save_file=1
 fi
 
+# decide whether there is a separate active data storage file system
+if test x"$BOOT_NO_ACTIVE_FS" = x1; then
+    is_active_fs=0
+else
+    BOOT_NO_ACTIVE_FS=0
+    if test x"$is_save_file" = x0; then
+        is_active_fs=1
+    else
+        is_active_fs=0
+    fi
+fi
+
 # script paths
 CMD_SAVE=${RUN_ENV_PLATFORM_PATH}/bin/save.sh
-CMD_INCREASE_SAVE_SIZE=${RUN_ENV_PLATFORM_PATH}/bin/increase-save-size.sh
 CMD_UPDATE_GRUB=${RUN_ENV_PLATFORM_PATH}/bin/update-grub.sh
 
 # Other paths
@@ -647,6 +658,12 @@ case "$command" in
                     USAGE_SAVE_TOTAL=-
                     USAGE_SAVE_USED=-
                     USAGE_SAVE_FREE=-
+
+                    if test "$is_active_fs" = 0; then
+                        USAGE_ACTIVE_TOTAL=-
+                        USAGE_ACTIVE_USED=-
+                        USAGE_ACTIVE_FREE=-
+                    fi
                 else
                     USAGE_ACTIVE_TOTAL=-
                     USAGE_ACTIVE_USED=-
@@ -826,9 +843,9 @@ case "$command" in
     #
     # +active - alot additional RAM to increase the active storage capacity
     #
-    +active )   # only valid when using active storage
-                test "$is_save_file" != 0 \
-                    && panicExit "Option \"+active\" is only valid when using active storage"
+    +active )   # only valid when using an active storage file system
+                test "$is_save_file" != 0 -o "$is_active_fs" = 0\
+                    && panicExit "Option \"+active\" is only valid when using an active storage file system"
 
                 testVariableDefinition MOUNT_SAVE || panicExit
                 testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT || panicExit
