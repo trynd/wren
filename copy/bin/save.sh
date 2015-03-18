@@ -89,6 +89,9 @@ OPTIONS
 
         -h, --help      Print this usage information.
 
+        --no-snapshot   Skip creating a snapshot even if may be possible. Copy
+                        directly from the active file system.
+
         -s, --save      When no OUTPUT_FILE is provided, this option is used to
                         set the save name used to determine the path to the save
                         file on the boot media.
@@ -141,6 +144,7 @@ file=""
 save_name=""
 flag_file=0
 flag_save=0
+no_snapshot=0
 for i in "$@"; do
     if test x"$flag_file" = x1; then
         file=$i
@@ -156,6 +160,8 @@ for i in "$@"; do
             -f* )           file=${i#-f} ;;
 
             -h|--help )     printUsage 0 ;;
+
+            --no-snapshot ) no_snapshot=1 ;;
 
             -s|--save )     flag_save=1 ;;
 
@@ -208,17 +214,33 @@ pid_name=save
 createPidFile "$pid_name" "$$" || { pid_name= ; panicExit ; }
 
 
-# determine whether to use a snapshot
+# whether to create a snapshot
 use_snapshot=0
-active_volume_image_path=`getActiveVolumeImagePath` \
-    && test -f "$active_volume_image_path" \
-    && active_volume_root_subvolume_path=`getActiveVolumeRootSubvolumePath` \
-    && test -d "$active_volume_root_subvolume_path" \
-    && active_volume_root_snapshot_subvolume_path=`getActiveVolumeRootSnapshotSubvolumePath` \
-    && test x"$active_volume_root_snapshot_subvolume_path" != x \
-    && use_snapshot=1 \
-    || echo "Snapshot not possible - falling back to standard copy mode"
-  
+
+
+# if snapshots are not specifically disabled
+if test x"$no_snapshot" = x0; then
+
+
+    # determine whether to use a snapshot
+    active_volume_image_path=`getActiveVolumeImagePath` \
+        && test -f "$active_volume_image_path" \
+        && active_volume_root_subvolume_path=`getActiveVolumeRootSubvolumePath` \
+        && test -d "$active_volume_root_subvolume_path" \
+        && active_volume_root_snapshot_subvolume_path=`getActiveVolumeRootSnapshotSubvolumePath` \
+        && test x"$active_volume_root_snapshot_subvolume_path" != x \
+        && use_snapshot=1 \
+        || echo "Snapshot not possible - falling back to standard copy mode"
+
+
+else
+
+
+    echo "Proceeding without snapshot..."
+
+
+fi
+
 
 
 # create snapshot (if possible)
@@ -247,6 +269,7 @@ if test x"$use_snapshot" = x1; then
         || panicExit
     # readonly must be set separately for bind mounts in some kernels
     mount -o remount,ro "$MOUNT_SNAPSHOT_TMP" || panicExit
+
 
 fi
 

@@ -79,7 +79,8 @@ SYNOPSIS
     $APP_NAME get <VARIABLE>
     $APP_NAME grub <generate|show|write [-v]>
     $APP_NAME list [all]
-    $APP_NAME save [savename=<SAVE_NAME>|savefile=</PATH/TO/FILE>] [-v]
+    $APP_NAME save [savename=<SAVE_NAME>|savefile=</PATH/TO/FILE>]
+        [--no-snapshot] [-v]
     $APP_NAME set <VARIABLE> <VALUE>
     $APP_NAME status [all|device|platform|savefile|savename|savenames]
     $APP_NAME unset <VARIABLE>
@@ -91,7 +92,7 @@ OPTIONS
 
     +active     Allot additional memory to increase the platform's active
                 storage capacity (when using active storage).
-                
+
                 Can also be used to check if an increase is \"necessary\"
                 and/or \"safe\".
 
@@ -117,7 +118,7 @@ OPTIONS
                                 Use this in combination with a BYTE_COUNT to
                                 test the \"safe\" status of a specific size
                                 increment.
-                                
+
                                 Returns a binary mask exit code:
 
                                     0 = safe and necessary
@@ -138,7 +139,7 @@ OPTIONS
     get         Retrieve a stored variable value. Requires a variable name.
 
     grub        Perform a Grub configuration SUBCOMMAND.
-    
+
                 Requires one SUBCOMMAND from the following:
 
                     generate    Display a new Grub configuration to standard
@@ -156,23 +157,26 @@ OPTIONS
                 using the \"write\" SUBCOMMAND.
 
     list        Display stored variables and their values.
-    
+
                 Used primarily for debugging purposes.
-    
+
                 Accepts one SUBCOMMAND from the following:
 
                     all         Display all known variables, even if they
                                 are not set or stored.
 
     save        Save to disk (or a target save file).
-    
+
                 Accepts one OPTION in the following format:
-                
+
                     save savename=\"name_of_save_on_disk\"
                     save savefile=\"/path/to/save/file\"
-                    
+
                 If no OPTION is provided, set variables or system defaults
                 will be used.
+
+                Accepts the \"--no-snapshot\" modifier to disable snapshot
+                creation before the save.
 
                 Accepts the \"-v\" modifier for more verbose output.
 
@@ -188,7 +192,7 @@ OPTIONS
 
     status      Report on current platform state and expected paths/values.
                 Accepts an optional SUBCOMMAND to retrieve a specific state.
-                
+
                 Accepted SUBCOMMAND values are:
 
                     all         Display all states (default).
@@ -420,7 +424,7 @@ case "$command" in
                     esac
                 fi
 
-                # show "all" variables or only those that are set 
+                # show "all" variables or only those that are set
                 test "$option" = all -o -n "$SAVENAME" && echo "savename=$SAVENAME"
                 test "$option" = all -o -n "$SAVEFILE" && echo "savefile=$SAVEFILE"
                 ;;
@@ -474,7 +478,7 @@ case "$command" in
                     panicExit "Option \"set\" requires a variable and a value"
                 fi
                 ;;
-                
+
     #
     # unset - unassign and remove stored variable values
     #
@@ -737,18 +741,28 @@ case "$command" in
                         ""
                 esac
                 ;;
-                
+
     #
     # save - store active storage content to a save file
     #
     save )      savename=""
                 savefile=""
 
-                # check for verbose modifier
-                modifier=$3
-                test "$option" = "-v" \
-                    && modifier=$option \
-                    && option=$3
+                # clear command from arguments
+                shift
+
+                # parse options
+                option=''
+                is_no_snapshot=0
+                is_verbose=0
+                bytes_increase=$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT
+                for i in "$@"; do
+                    case "$i" in
+                        --no-snapshot ) is_no_snapshot=1 ;;
+                        -v )            is_verbose=1 ;;
+                        * )             $option=$i ;;
+                    esac
+                done
 
                 # determine savefile or savename
                 if test -n "$option"; then
@@ -760,23 +774,23 @@ case "$command" in
                 else
                     if test -n "$SAVEFILE"; then
                         savefile="$SAVEFILE"
-                        test "$modifier" = "-v" \
+                        test "$is_verbose" = 1 \
                             && echo "Using save file: $savefile"
                     else
                         testVariableDefinition MOUNT_DEVICE || panicExit
                         if testIsMounted "$MOUNT_DEVICE"; then
                             if test -n "$SAVENAME"; then
                                 savename="$SAVENAME"
-                                test "$modifier" = "-v" \
+                                test "$is_verbose" = 1 \
                                     && echo "Using save name: $savename"
                             else
                                 if test -n "$BOOT_SAVE"; then
                                     savename="$BOOT_SAVE"
-                                    test "$modifier" = "-v" \
+                                    test "$is_verbose" = 1 \
                                         && echo "Using boot-time save name: $savename"
                                 elif test -n "$PLATFORM_DEFAULT_SAVE"; then
                                     savename="$PLATFORM_DEFAULT_SAVE"
-                                    test "$modifier" = "-v" \
+                                    test "$is_verbose" = 1 \
                                         && echo "Using platform-default save name: $savename "
                                 fi
                             fi
@@ -788,11 +802,19 @@ case "$command" in
 
                 # save using savefile or savename
                 if test -n "$savefile"; then
-                    $CMD_SAVE -f "$savefile" || panicExit
+                    if test "$is_no_snapshot" = 1; then
+                        $CMD_SAVE -f "$savefile" --no-snapshot || panicExit
+                    else
+                        $CMD_SAVE -f "$savefile" || panicExit
+                    fi
                 elif test -n "$savename"; then
                     testVariableDefinition MOUNT_DEVICE || panicExit
                     if testIsMounted "$MOUNT_DEVICE"; then
-                        $CMD_SAVE -s "$savename" || panicExit
+                        if test "$is_no_snapshot" = 1; then
+                            $CMD_SAVE -s "$savename" --no-snapshot || panicExit
+                        else
+                            $CMD_SAVE -s "$savename" || panicExit
+                        fi
                     else
                         panicExit "Boot device is not mounted"
                     fi
