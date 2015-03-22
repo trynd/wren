@@ -389,7 +389,9 @@ EOF
 
     # active/save storage information
     testVariableDefinition MOUNT_SAVE || panicExit
-    if test "$is_active_fs" != 0; then
+    if test "$is_save_file" != 0 \
+        -o "$is_active_fs" != 0
+    then
         active_info=$(df -B1 "$MOUNT_SAVE" | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
         if test -n "$active_info"; then
             if IFS=' ' read a b c; then
@@ -407,7 +409,7 @@ $active_info
 EOF
         fi
     else
-        USAGE_ACTIVE_USED=$(du -bd0 "$MOUNT_SAVE" | tr -s '\t' ' ' | cut -d ' ' -f 1) || return $?
+        USAGE_ACTIVE_USED=$(du -B1 -d0 "$MOUNT_SAVE" | tr -s '\t' ' ' | cut -d ' ' -f 1) || return $?
     fi
 
     # memory (ram + swap) information
@@ -611,7 +613,7 @@ case "$command" in
                 # storesize
                 case "$option" in storesize | all )
                     testVariableDefinition MOUNT_SAVE || panicExit
-                    storesize=$(du -bd0 "$MOUNT_SAVE" | tr -s '\t' ' ' | cut -d ' ' -f 1) \
+                    storesize=$(du -B1 -d0 "$MOUNT_SAVE" | tr -s '\t' ' ' | cut -d ' ' -f 1) \
                         || panicExit
                     case "$modifier" in -h | --human )
                         storesize=$(bytesToHuman "$storesize") \
