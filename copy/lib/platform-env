@@ -1287,3 +1287,57 @@ increaseActiveImageAndVolumeSize()
 
     return 0
 }
+
+
+###
+### SYSTEM STATE
+###
+
+testIsCurrentActiveImage()
+{
+    # required
+    local image_path
+
+    # local
+    local loop
+
+    testVariableDefinition MOUNT_SAVE || return $?
+
+    image_path=$1
+
+    if test -n "$image_path"; then
+        if test -f "$image_path"; then
+            if loop=`getImageLoop "$image_path"`; then
+                cat /proc/mounts \
+                    | tr -s '\t' ' ' \
+                    | cut -d ' ' -f 1-2 \
+                    | grep "^$loop $MOUNT_SAVE$" > /dev/null \
+                    && return 0
+            fi
+        fi
+    else
+        echo "Image path required" >&2
+    fi
+
+    return 1
+}
+
+testIsActiveImageSave()
+{
+    # local
+    local save_image_path
+
+    save_image_path=`getExistingSaveImagePath` || return $?
+    testIsCurrentActiveImage "$save_image_path"
+    return $?
+}
+
+testIsActiveImageActiveVolume()
+{
+    # local
+    local active_volume_image_path
+
+    active_volume_image_path=`getActiveVolumeImagePath` || return $?
+    testIsCurrentActiveImage "$active_volume_image_path"
+    return $?
+}
