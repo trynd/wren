@@ -85,7 +85,7 @@ SYNOPSIS
     $APP_NAME status [all|device|platform|savefile|savename|savenames|store|
         storefs|storepath|storesize] [-h|--human]
     $APP_NAME unset <VARIABLE>
-    $APP_NAME usage [all|active|device|memory] [-h|--human]
+    $APP_NAME usage [all|active|device|memory|ram|save|swap] [-h|--human]
 
 OPTIONS
 
@@ -195,6 +195,7 @@ OPTIONS
                 Use \"-h\" or \"--human\" for human readable values.
 
                 Accepts an optional SUBCOMMAND to retrieve a specific state.
+
                 Accepted SUBCOMMAND values are:
 
                     all         Display all states (default).
@@ -233,7 +234,8 @@ OPTIONS
 
                 Accepts the following optional SUBCOMMANDS:
 
-                    all         Display all values (default).
+                    all         Display all values (even those not currently
+                                applicable).
 
                     active      Display active data storage usage (if booted
                                 with save-to-ram).
@@ -242,12 +244,20 @@ OPTIONS
 
                     memory      Display memory usage. These values include
                                 combined RAM and swap. An extra \"unallocated\"
-                                field designates the amount of free memory
-                                that has not already been allocated for active
-                                data storage.
+                                field designates the amount of free memory that
+                                has not already been allocated for active data
+                                storage.
+
+                                Note: The \"memory\" SUBCOMMAND provides the
+                                same information as the \"total\" line in the
+                                \"all\" SUBCOMMAND output.
+
+                    ram         Display RAM memory usage.
 
                     save        Display save image usage (if booted directly
                                 from save file).
+
+                    swap        Display swap memory usage.
 "
 printUsage()
 {
@@ -351,6 +361,12 @@ setUsageStats()
     unset USAGE_SAVE_TOTAL
     unset USAGE_SAVE_USED
     unset USAGE_SAVE_FREE
+    unset USAGE_RAM_TOTAL
+    unset USAGE_RAM_USED
+    unset USAGE_RAM_FREE
+    unset USAGE_SWAP_TOTAL
+    unset USAGE_SWAP_USED
+    unset USAGE_SWAP_FREE
     unset USAGE_MEMORY_TOTAL
     unset USAGE_MEMORY_USED
     unset USAGE_MEMORY_FREE
@@ -404,7 +420,28 @@ EOF
     fi
 
     # memory (ram + swap) information
-    memory_info=$(free -bt | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+    memory_info=$(free -bt) || return $?
+    ram_info=$(echo "$memory_info" | grep -i '^mem:' | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+    swap_info=$(echo "$memory_info" | grep -i '^swap:' | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+    memory_info=$(echo "$memory_info" | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+    if test -n "$ram_info"; then
+        if IFS=' ' read a b c; then
+            USAGE_RAM_TOTAL=$a
+            USAGE_RAM_USED=$b
+            USAGE_RAM_FREE=$c
+        fi <<EOF
+$ram_info
+EOF
+    fi
+    if test -n "$swap_info"; then
+        if IFS=' ' read a b c; then
+            USAGE_SWAP_TOTAL=$a
+            USAGE_SWAP_USED=$b
+            USAGE_SWAP_FREE=$c
+        fi <<EOF
+$swap_info
+EOF
+    fi
     if test -n "$memory_info"; then
         if IFS=' ' read a b c; then
             USAGE_MEMORY_TOTAL=$a
@@ -689,12 +726,9 @@ case "$command" in
                     option=$3
                 esac
 
-                # no option is the same as "all"
-                test -z "$option" && option=all
-
                 # check for invalid options
                 case "$option" in
-                    all | memory | active | save | device ) ;;
+                    '' | all | memory | ram | swap | active | save | device ) ;;
                     * ) panicExit "Unknown \"usage\" option: $option" ;;
                 esac
 
@@ -730,14 +764,21 @@ case "$command" in
 
                 # default table format
                 usage_format='%-8s %15s %15s %15s %15s\n'
+                unallocated_header=''
+                unallocated_unused=''
+                case "$option" in memory | all | '' )
+                    if test "$is_save_file" = 0; then
+                        unallocated_header=unallocated
+                        unallocated_unused=-
+                    fi
+                esac
 
                 # check for modifiers
                 case "$modifier" in -h | -human )
-                    usage_format='%-8s %7s %7s %7s %12s\n'
-                    USAGE_MEMORY_TOTAL=$(bytesToHuman "$USAGE_MEMORY_TOTAL")
-                    USAGE_MEMORY_USED=$(bytesToHuman "$USAGE_MEMORY_USED")
-                    USAGE_MEMORY_FREE=$(bytesToHuman "$USAGE_MEMORY_FREE")
-                    USAGE_MEMORY_UNALLOCATED=$(bytesToHuman "$USAGE_MEMORY_UNALLOCATED")
+                    usage_format='%-8s %7s %7s %7s %8s\n'
+                    if test -n "$unallocated_header"; then
+                        unallocated_header=unalloc
+                    fi
                     if test "$is_save_file" = 0; then
                         USAGE_ACTIVE_USED=$(bytesToHuman "$USAGE_ACTIVE_USED")
                         if test "$is_active_fs" != 0; then
@@ -754,57 +795,102 @@ case "$command" in
                         USAGE_DEVICE_USED=$(bytesToHuman "$USAGE_DEVICE_USED")
                         USAGE_DEVICE_FREE=$(bytesToHuman "$USAGE_DEVICE_FREE")
                     fi
+                    USAGE_RAM_TOTAL=$(bytesToHuman "$USAGE_RAM_TOTAL")
+                    USAGE_RAM_USED=$(bytesToHuman "$USAGE_RAM_USED")
+                    USAGE_RAM_FREE=$(bytesToHuman "$USAGE_RAM_FREE")
+                    USAGE_SWAP_TOTAL=$(bytesToHuman "$USAGE_SWAP_TOTAL")
+                    USAGE_SWAP_USED=$(bytesToHuman "$USAGE_SWAP_USED")
+                    USAGE_SWAP_FREE=$(bytesToHuman "$USAGE_SWAP_FREE")
+                    USAGE_MEMORY_TOTAL=$(bytesToHuman "$USAGE_MEMORY_TOTAL")
+                    USAGE_MEMORY_USED=$(bytesToHuman "$USAGE_MEMORY_USED")
+                    USAGE_MEMORY_FREE=$(bytesToHuman "$USAGE_MEMORY_FREE")
+                    USAGE_MEMORY_UNALLOCATED=$(bytesToHuman "$USAGE_MEMORY_UNALLOCATED")
                 esac
 
                 # display usage table
-                unallocated_header=''
-                case "$option" in memory | all )
-                    test "$is_save_file" = 0 \
-                        && unallocated_header='unallocated'
-                esac
                 printf "$usage_format" '' 'total' 'used' 'free' "$unallocated_header"
 
-                # memory
-                case "$option" in memory | all )
-                    test "$is_save_file" = 0 \
-                        && unallocated=$USAGE_MEMORY_UNALLOCATED \
-                        || unallocated=''
-                    printf "$usage_format" 'memory:' \
-                        "$USAGE_MEMORY_TOTAL" \
-                        "$USAGE_MEMORY_USED" \
-                        "$USAGE_MEMORY_FREE" \
-                        "$unallocated"
+                case "$option" in all | '' )
+                    printf "%s\n" '[STORAGE]'
                 esac
 
                 # active
-                case "$option" in active | all )
-                    if test "$option" = active -o "$is_save_file" = 0; then
+                case "$option" in active | all | '' )
+                    if test "$option" = active \
+                        -o "$option" = all \
+                        -o "$is_save_file" = 0
+                    then
                         printf "$usage_format" 'active:' \
                             "$USAGE_ACTIVE_TOTAL" \
                             "$USAGE_ACTIVE_USED" \
                             "$USAGE_ACTIVE_FREE" \
-                            ""
+                            "$unallocated_unused"
                     fi
                 esac
 
                 # save
-                case "$option" in save | all )
-                    if test "$option" = save -o "$is_save_file" != 0; then
+                case "$option" in save | all | '' )
+                    if test "$option" = save \
+                        -o "$option" = all \
+                        -o "$is_save_file" != 0
+                    then
                         printf "$usage_format" 'save:' \
                             "$USAGE_SAVE_TOTAL" \
                             "$USAGE_SAVE_USED" \
                             "$USAGE_SAVE_FREE" \
-                            ""
+                            "$unallocated_unused"
                     fi
                 esac
 
                 # device
-                case "$option" in device | all )
-                    printf "$usage_format" 'device:' \
-                        "$USAGE_DEVICE_TOTAL" \
-                        "$USAGE_DEVICE_USED" \
-                        "$USAGE_DEVICE_FREE" \
-                        ""
+                case "$option" in device | all | '' )
+                    if test "$option" = device \
+                        -o "$option" = all \
+                        -o "$device_mounted" != 0
+                    then
+                        printf "$usage_format" 'device:' \
+                            "$USAGE_DEVICE_TOTAL" \
+                            "$USAGE_DEVICE_USED" \
+                            "$USAGE_DEVICE_FREE" \
+                            "$unallocated_unused"
+                    fi
+                esac
+
+                case "$option" in all | '' )
+                    printf "%s\n" '[MEMORY]'
+                esac
+
+                # ram
+                case "$option" in ram | all | '' )
+                    printf "$usage_format" "ram:" \
+                        "$USAGE_RAM_TOTAL" \
+                        "$USAGE_RAM_USED" \
+                        "$USAGE_RAM_FREE" \
+                        "$unallocated_unused"
+                esac
+
+                # swap
+                case "$option" in swap | all | '' )
+                    printf "$usage_format" "swap:" \
+                        "$USAGE_SWAP_TOTAL" \
+                        "$USAGE_SWAP_USED" \
+                        "$USAGE_SWAP_FREE" \
+                        "$unallocated_unused"
+                esac
+
+                # memory
+                case "$option" in memory | all | '' )
+                    label='total:'
+                    test "$option" = memory \
+                        && label='memory:'
+                    test "$is_save_file" = 0 \
+                        && unallocated=$USAGE_MEMORY_UNALLOCATED \
+                        || unallocated='-'
+                    printf "$usage_format" "$label" \
+                        "$USAGE_MEMORY_TOTAL" \
+                        "$USAGE_MEMORY_USED" \
+                        "$USAGE_MEMORY_FREE" \
+                        "$unallocated"
                 esac
                 ;;
 
