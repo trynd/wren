@@ -415,6 +415,7 @@ $memory_info
 EOF
     fi
 
+    # unallocated memory (active file system only)
     USAGE_MEMORY_UNALLOCATED=0
     if test -n "$USAGE_MEMORY_FREE"; then
         USAGE_MEMORY_UNALLOCATED=$(($USAGE_MEMORY_FREE - ${USAGE_ACTIVE_FREE:-0}))
