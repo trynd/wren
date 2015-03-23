@@ -885,7 +885,7 @@ case "$command" in
                         && label='memory:'
                     test "$is_save_file" = 0 \
                         && unallocated=$USAGE_MEMORY_UNALLOCATED \
-                        || unallocated='-'
+                        || unallocated="$unallocated_unused"
                     printf "$usage_format" "$label" \
                         "$USAGE_MEMORY_TOTAL" \
                         "$USAGE_MEMORY_USED" \
