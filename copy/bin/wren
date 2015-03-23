@@ -73,7 +73,7 @@ DESCRIPTION
 SYNOPSIS
 
     $APP_NAME <-h|--help>
-    $APP_NAME <COMMAND> [SUBCOMMAND|OPTION] [-v]
+    $APP_NAME <COMMAND> [SUBCOMMAND|OPTION] [OPTION]
 
     $APP_NAME +active [BYTE_COUNT] [--check|--force] [-v]
     $APP_NAME get <VARIABLE>
@@ -82,7 +82,8 @@ SYNOPSIS
     $APP_NAME save [savename=<SAVE_NAME>|savefile=</PATH/TO/FILE>]
         [--no-snapshot] [-v]
     $APP_NAME set <VARIABLE> <VALUE>
-    $APP_NAME status [all|device|platform|savefile|savename|savenames]
+    $APP_NAME status [all|device|platform|savefile|savename|savenames|store|
+        storefs|storepath|storesize] [-h|--human]
     $APP_NAME unset <VARIABLE>
     $APP_NAME usage [all|active|device|memory] [-h|--human]
 
@@ -266,24 +267,14 @@ PLATFORM_DEFAULT_SAVE=""
 loadRunEnvConf || panicExit
 updateBootOptions || panicExit
 
-# decide whether the system booted directly from a save image
-if test x"$BOOT_SAVE_TO_RAM" = x1; then
-    is_save_file=0
-else
-    BOOT_SAVE_TO_RAM=0
+# determine whether the system booted its active data store
+# with a known system image file
+is_active_fs=0
+is_save_file=0
+if testIsActiveImageActiveVolume; then
+    is_active_fs=1
+elif testIsActiveImageSave; then
     is_save_file=1
-fi
-
-# decide whether there is a separate active data storage file system
-if test x"$BOOT_NO_ACTIVE_FS" = x1; then
-    is_active_fs=0
-else
-    BOOT_NO_ACTIVE_FS=0
-    if test x"$is_save_file" = x0; then
-        is_active_fs=1
-    else
-        is_active_fs=0
-    fi
 fi
 
 # script paths
