@@ -73,7 +73,7 @@ DESCRIPTION
 SYNOPSIS
 
     $APP_NAME <-h|--help>
-    $APP_NAME <COMMAND> [SUBCOMMAND|OPTION] [-v]
+    $APP_NAME <COMMAND> [SUBCOMMAND|OPTION] [OPTION]
 
     $APP_NAME +active [BYTE_COUNT] [--check|--force] [-v]
     $APP_NAME get <VARIABLE>
@@ -82,7 +82,8 @@ SYNOPSIS
     $APP_NAME save [savename=<SAVE_NAME>|savefile=</PATH/TO/FILE>]
         [--no-snapshot] [-v]
     $APP_NAME set <VARIABLE> <VALUE>
-    $APP_NAME status [all|device|platform|savefile|savename|savenames]
+    $APP_NAME status [all|device|platform|savefile|savename|savenames|store|
+        storefs|storepath|storesize] [-h|--human]
     $APP_NAME unset <VARIABLE>
     $APP_NAME usage [all|active|device|memory] [-h|--human]
 
@@ -191,8 +192,9 @@ OPTIONS
                     savefile, savename
 
     status      Report on current platform state and expected paths/values.
-                Accepts an optional SUBCOMMAND to retrieve a specific state.
+                Use \"-h\" or \"--human\" for human readable values.
 
+                Accepts an optional SUBCOMMAND to retrieve a specific state.
                 Accepted SUBCOMMAND values are:
 
                     all         Display all states (default).
@@ -213,6 +215,14 @@ OPTIONS
 
                     store       \"active\" or \"save\" depending on whether
                                 the save-to-ram feature was used at boot time.
+
+                    storefs     The file system used by the current store.
+
+                    storepath   The directory path under which store files may
+                                be found.
+
+                    storesize   The size of the content currently in the store
+                                directory.
 
     unset       Unassign and remove a stored variable. Requires a variable
                 name.
@@ -257,17 +267,18 @@ PLATFORM_DEFAULT_SAVE=""
 loadRunEnvConf || panicExit
 updateBootOptions || panicExit
 
-# make a decision whether the system booted directly from a save image
-if test x"$BOOT_SAVE_TO_RAM" = x1; then
-    is_save_file=0
-else
-    BOOT_SAVE_TO_RAM=0
+# determine whether the system booted its active data store
+# with a known system image file
+is_active_fs=0
+is_save_file=0
+if testIsActiveImageActiveVolume; then
+    is_active_fs=1
+elif testIsActiveImageSave; then
     is_save_file=1
 fi
 
 # script paths
 CMD_SAVE=${RUN_ENV_PLATFORM_PATH}/bin/save.sh
-CMD_INCREASE_SAVE_SIZE=${RUN_ENV_PLATFORM_PATH}/bin/increase-save-size.sh
 CMD_UPDATE_GRUB=${RUN_ENV_PLATFORM_PATH}/bin/update-grub.sh
 
 # Other paths
@@ -368,21 +379,28 @@ EOF
     fi
 
     # active/save storage information
-    active_info=$(df -B1 "$MOUNT_SAVE" | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
-    if test -n "$active_info"; then
-        if IFS=' ' read a b c; then
-            if test "$is_save_file" = 0; then
-                USAGE_ACTIVE_TOTAL=$a
-                USAGE_ACTIVE_USED=$b
-                USAGE_ACTIVE_FREE=$c
-            else
-                USAGE_SAVE_TOTAL=$a
-                USAGE_SAVE_USED=$b
-                USAGE_SAVE_FREE=$c
-            fi
-        fi <<EOF
+    testVariableDefinition MOUNT_SAVE || panicExit
+    if test "$is_save_file" != 0 \
+        -o "$is_active_fs" != 0
+    then
+        active_info=$(df -B1 "$MOUNT_SAVE" | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
+        if test -n "$active_info"; then
+            if IFS=' ' read a b c; then
+                if test "$is_save_file" = 0; then
+                    USAGE_ACTIVE_TOTAL=$a
+                    USAGE_ACTIVE_USED=$b
+                    USAGE_ACTIVE_FREE=$c
+                else
+                    USAGE_SAVE_TOTAL=$a
+                    USAGE_SAVE_USED=$b
+                    USAGE_SAVE_FREE=$c
+                fi
+            fi <<EOF
 $active_info
 EOF
+        fi
+    else
+        USAGE_ACTIVE_USED=$(du -B1 -d0 "$MOUNT_SAVE" | tr -s '\t' ' ' | cut -d ' ' -f 1) || return $?
     fi
 
     # memory (ram + swap) information
@@ -397,6 +415,7 @@ $memory_info
 EOF
     fi
 
+    # unallocated memory (active file system only)
     USAGE_MEMORY_UNALLOCATED=0
     if test -n "$USAGE_MEMORY_FREE"; then
         USAGE_MEMORY_UNALLOCATED=$(($USAGE_MEMORY_FREE - ${USAGE_ACTIVE_FREE:-0}))
@@ -494,9 +513,16 @@ case "$command" in
     #
     # status - report on current platform state and expected paths/values
     #
-    status )    # check for invalid options
+    status )    # check for modifier
+                modifier=$3
+                case "$option" in -h | --human )
+                    modifier=$option
+                    option=$3
+                esac
+
+                # check for invalid options
                 case "$option" in
-                    '' | all | platform | device | store | savename | savefile | savenames ) ;;
+                    '' | all | platform | device | store | storedir | storesize | storefs | savename | savefile | savenames ) ;;
                     * ) panicExit "Unknown \"status\" option: $option" ;;
                 esac
 
@@ -554,6 +580,39 @@ case "$command" in
                     else
                         echo "save"
                     fi
+                esac
+
+                # storefs
+                case "$option" in storefs | all )
+                    testVariableDefinition MOUNT_SAVE || panicExit
+                    if testIsMounted "$MOUNT_SAVE"; then
+                        storefs=$(cat /proc/mounts | tr -s '\t' ' ' | cut -d ' ' -f 2-3 | grep "^$MOUNT_SAVE" | cut -d ' ' -f 2) \
+                            || panicExit
+                    else
+                        storefs=tmpfs
+                    fi
+                    test "$option" = all && printf "$format_label" "storefs:"
+                    echo "$storefs"
+                esac
+
+                # storepath
+                case "$option" in storepath | all )
+                    testVariableDefinition MOUNT_SAVE || panicExit
+                    test "$option" = all && printf "$format_label" "storepath:"
+                    echo "$MOUNT_SAVE"
+                esac
+
+                # storesize
+                case "$option" in storesize | all )
+                    testVariableDefinition MOUNT_SAVE || panicExit
+                    storesize=$(du -B1 -d0 "$MOUNT_SAVE" | tr -s '\t' ' ' | cut -d ' ' -f 1) \
+                        || panicExit
+                    case "$modifier" in -h | --human )
+                        storesize=$(bytesToHuman "$storesize") \
+                            || panicExit
+                    esac
+                    test "$option" = all && printf "$format_label" "storesize:"
+                    echo "$storesize"
                 esac
 
                 # savename
@@ -647,6 +706,11 @@ case "$command" in
                     USAGE_SAVE_TOTAL=-
                     USAGE_SAVE_USED=-
                     USAGE_SAVE_FREE=-
+
+                    if test "$is_active_fs" = 0; then
+                        USAGE_ACTIVE_TOTAL=-
+                        USAGE_ACTIVE_FREE=-
+                    fi
                 else
                     USAGE_ACTIVE_TOTAL=-
                     USAGE_ACTIVE_USED=-
@@ -675,9 +739,11 @@ case "$command" in
                     USAGE_MEMORY_FREE=$(bytesToHuman "$USAGE_MEMORY_FREE")
                     USAGE_MEMORY_UNALLOCATED=$(bytesToHuman "$USAGE_MEMORY_UNALLOCATED")
                     if test "$is_save_file" = 0; then
-                        USAGE_ACTIVE_TOTAL=$(bytesToHuman "$USAGE_ACTIVE_TOTAL")
                         USAGE_ACTIVE_USED=$(bytesToHuman "$USAGE_ACTIVE_USED")
-                        USAGE_ACTIVE_FREE=$(bytesToHuman "$USAGE_ACTIVE_FREE")
+                        if test "$is_active_fs" != 0; then
+                            USAGE_ACTIVE_TOTAL=$(bytesToHuman "$USAGE_ACTIVE_TOTAL")
+                            USAGE_ACTIVE_FREE=$(bytesToHuman "$USAGE_ACTIVE_FREE")
+                        fi
                     else
                         USAGE_SAVE_TOTAL=$(bytesToHuman "$USAGE_SAVE_TOTAL")
                         USAGE_SAVE_USED=$(bytesToHuman "$USAGE_SAVE_USED")
@@ -826,9 +892,9 @@ case "$command" in
     #
     # +active - alot additional RAM to increase the active storage capacity
     #
-    +active )   # only valid when using active storage
-                test "$is_save_file" != 0 \
-                    && panicExit "Option \"+active\" is only valid when using active storage"
+    +active )   # only valid when using an active storage file system
+                test "$is_save_file" != 0 -o "$is_active_fs" = 0\
+                    && panicExit "Option \"+active\" is only valid when using an active storage file system"
 
                 testVariableDefinition MOUNT_SAVE || panicExit
                 testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT || panicExit

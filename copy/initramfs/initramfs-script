@@ -215,32 +215,6 @@ then
 else
 
     testVariableDefinition MOUNT_TMP                                     || panicExit
-    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT     || panicExit
-    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT   || panicExit
-    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE || panicExit
-    testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_MOUNT_OPTIONS    || panicExit
-    testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_JOURNALED       || panicExit
-    testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_VOLUME          || panicExit
-
-
-    # determine active volume storage size
-    image_volume_active_size=$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT
-    if test -x"$image_save" != x -a -f "$image_save"; then
-
-        # get device save file disk usage
-        device_image_save_size=`getDiskUsage "$image_save"` || panicExit
-
-        # increase size by resize tolerance to allow for expansion
-        device_image_save_size=$(($device_image_save_size+$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE)) \
-            || panicExit
-
-        # increment storage size until it can hold what's on the device
-        while test "$image_volume_active_size" -lt "$device_image_save_size"; do
-            image_volume_active_size=$(($image_volume_active_size+$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT)) \
-                || panicExit
-        done
-
-    fi
 
 
     # create temporary tmpfs union as a working chroot environment
@@ -253,28 +227,59 @@ else
     done
 
 
-    # create, format, and mount the active volume
-    image_volume_active=`getActiveVolumeImagePath` || panicExit
-    chroot "$MOUNT_TMP" dd if=/dev/zero of="$image_volume_active" \
-        bs=1 seek="$image_volume_active_size" count=0 1>/dev/null \
-        || panicExit
-    chroot "$MOUNT_TMP" mkfs.btrfs "$image_volume_active" 1>/dev/null \
-        || panicExit
-    volume_active=`getActiveVolumePath` || panicExit
-    mkdir -p "$volume_active" || panicExit
-    loop_volume_active=`losetup -f` || panicExit
-    mountImage "$PLATFORM_FILESYSTEM_READWRITE_VOLUME" \
-        "rw,$PLATFORM_IMAGE_VOLUME_ACTIVE_MOUNT_OPTIONS" \
-        "$image_volume_active" "$volume_active" "$loop_volume_active" \
-        || panicExit
+    if test x"$BOOT_NO_ACTIVE_FS" != x1; then
+
+        testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT     || panicExit
+        testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT   || panicExit
+        testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE || panicExit
+        testVariableDefinition PLATFORM_IMAGE_VOLUME_ACTIVE_MOUNT_OPTIONS    || panicExit
+        testVariableDefinition PLATFORM_FILESYSTEM_READWRITE_VOLUME          || panicExit
 
 
-    # create active volume's root subvolume and bind-mount it as the save store
-    volume_active_subvolume_root=`getActiveVolumeRootSubvolumePath` \
-        || panicExit
-    btrfs subvolume create "$volume_active_subvolume_root" 1>/dev/null \
-        || panicExit
-    mount --bind "$volume_active_subvolume_root" "$MOUNT_SAVE" || panicExit
+        # determine active volume storage size
+        image_volume_active_size=$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_DEFAULT
+        if test x"$image_save" != x -a -f "$image_save"; then
+
+            # get device save file disk usage
+            device_image_save_size=`getDiskUsage "$image_save"` || panicExit
+
+            # increase size by resize tolerance to allow for expansion
+            device_image_save_size=$(($device_image_save_size+$PLATFORM_IMAGE_VOLUME_ACTIVE_RESIZE_TOLERANCE)) \
+                || panicExit
+
+            # increment storage size until it can hold what's on the device
+            while test "$image_volume_active_size" -lt "$device_image_save_size"; do
+                image_volume_active_size=$(($image_volume_active_size+$PLATFORM_IMAGE_VOLUME_ACTIVE_SIZE_INCREMENT)) \
+                    || panicExit
+            done
+
+        fi
+
+
+        # create, format, and mount the active volume
+        image_volume_active=`getActiveVolumeImagePath` || panicExit
+        chroot "$MOUNT_TMP" dd if=/dev/zero of="$image_volume_active" \
+            bs=1 seek="$image_volume_active_size" count=0 1>/dev/null \
+            || panicExit
+        chroot "$MOUNT_TMP" mkfs.btrfs "$image_volume_active" 1>/dev/null \
+            || panicExit
+        volume_active=`getActiveVolumePath` || panicExit
+        mkdir -p "$volume_active" || panicExit
+        loop_volume_active=`losetup -f` || panicExit
+        mountImage "$PLATFORM_FILESYSTEM_READWRITE_VOLUME" \
+            "rw,$PLATFORM_IMAGE_VOLUME_ACTIVE_MOUNT_OPTIONS" \
+            "$image_volume_active" "$volume_active" "$loop_volume_active" \
+            || panicExit
+
+
+        # create active volume's root subvolume and bind-mount it as the save store
+        volume_active_subvolume_root=`getActiveVolumeRootSubvolumePath` \
+            || panicExit
+        btrfs subvolume create "$volume_active_subvolume_root" 1>/dev/null \
+            || panicExit
+        mount --bind "$volume_active_subvolume_root" "$MOUNT_SAVE" || panicExit
+
+    fi
 
 
     # if there's a save image we need to copy its content to the ram save store
@@ -319,6 +324,7 @@ else
         losetup "$loop_save" 1>/dev/null 2>&1 \
             && { unloopLoop "$loop_save" || panicExit ; }
         rmdir "$MOUNT_SAVE_TMP"
+
     fi
 
 
@@ -329,6 +335,7 @@ else
     umount "$MOUNT_TMP" || panicExit  # remove union mount
     umount "$MOUNT_TMP" || panicExit  # remove tmpfs mount
     rmdir "$MOUNT_TMP"
+
 fi
 
 
