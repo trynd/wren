@@ -396,8 +396,8 @@ EOF
 
     # active/save storage information
     testVariableDefinition MOUNT_SAVE || panicExit
-    if test "$is_save_file" != 0 \
-        -o "$is_active_fs" != 0
+    if test "$is_save_file" = 1 \
+        -o "$is_active_fs" = 1
     then
         active_info=$(df -B1 "$MOUNT_SAVE" | tail -n 1 | tr -s ' ' | cut -d ' ' -f 2-4) || return $?
         if test -n "$active_info"; then
@@ -453,8 +453,10 @@ EOF
     fi
 
     # unallocated memory (active file system only)
-    USAGE_MEMORY_UNALLOCATED=0
-    if test -n "$USAGE_MEMORY_FREE"; then
+    if test -n "$USAGE_MEMORY_FREE" \
+        -a -n "$USAGE_ACTIVE_FREE"
+    then
+        USAGE_MEMORY_UNALLOCATED=0
         USAGE_MEMORY_UNALLOCATED=$(($USAGE_MEMORY_FREE - ${USAGE_ACTIVE_FREE:-0}))
         test "$USAGE_MEMORY_UNALLOCATED" -lt 0 \
             && USAGE_MEMORY_UNALLOCATED=0
@@ -767,7 +769,7 @@ case "$command" in
                 unallocated_header=''
                 unallocated_unused=''
                 case "$option" in memory | all | '' )
-                    if test "$is_save_file" = 0; then
+                    if test "$is_active_fs" = 1; then
                         unallocated_header=unallocated
                         unallocated_unused=-
                     fi
@@ -781,7 +783,7 @@ case "$command" in
                     fi
                     if test "$is_save_file" = 0; then
                         USAGE_ACTIVE_USED=$(bytesToHuman "$USAGE_ACTIVE_USED")
-                        if test "$is_active_fs" != 0; then
+                        if test "$is_active_fs" = 1; then
                             USAGE_ACTIVE_TOTAL=$(bytesToHuman "$USAGE_ACTIVE_TOTAL")
                             USAGE_ACTIVE_FREE=$(bytesToHuman "$USAGE_ACTIVE_FREE")
                         fi
@@ -804,7 +806,9 @@ case "$command" in
                     USAGE_MEMORY_TOTAL=$(bytesToHuman "$USAGE_MEMORY_TOTAL")
                     USAGE_MEMORY_USED=$(bytesToHuman "$USAGE_MEMORY_USED")
                     USAGE_MEMORY_FREE=$(bytesToHuman "$USAGE_MEMORY_FREE")
-                    USAGE_MEMORY_UNALLOCATED=$(bytesToHuman "$USAGE_MEMORY_UNALLOCATED")
+                    if test "$is_active_fs" = 1; then
+                        USAGE_MEMORY_UNALLOCATED=$(bytesToHuman "$USAGE_MEMORY_UNALLOCATED")
+                    fi
                 esac
 
                 # display usage table
@@ -832,7 +836,7 @@ case "$command" in
                 case "$option" in save | all | '' )
                     if test "$option" = save \
                         -o "$option" = all \
-                        -o "$is_save_file" != 0
+                        -o "$is_save_file" = 1
                     then
                         printf "$usage_format" 'save:' \
                             "$USAGE_SAVE_TOTAL" \
@@ -846,7 +850,7 @@ case "$command" in
                 case "$option" in device | all | '' )
                     if test "$option" = device \
                         -o "$option" = all \
-                        -o "$device_mounted" != 0
+                        -o "$device_mounted" = 1
                     then
                         printf "$usage_format" 'device:' \
                             "$USAGE_DEVICE_TOTAL" \
@@ -883,7 +887,7 @@ case "$command" in
                     label='total:'
                     test "$option" = memory \
                         && label='memory:'
-                    test "$is_save_file" = 0 \
+                    test "$is_active_fs" = 1 \
                         && unallocated=$USAGE_MEMORY_UNALLOCATED \
                         || unallocated="$unallocated_unused"
                     printf "$usage_format" "$label" \
@@ -979,7 +983,7 @@ case "$command" in
     # +active - alot additional RAM to increase the active storage capacity
     #
     +active )   # only valid when using an active storage file system
-                test "$is_save_file" != 0 -o "$is_active_fs" = 0\
+                test "$is_active_fs" = 0\
                     && panicExit "Option \"+active\" is only valid when using an active storage file system"
 
                 testVariableDefinition MOUNT_SAVE || panicExit
